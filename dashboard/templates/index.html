@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>PR Dashboard – Salesforce</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; padding: 24px; }
+  h1 { font-size: 1.4rem; margin-bottom: 16px; color: #58a6ff; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid #30363d; flex-wrap: wrap; }
+  .tab { padding: 8px 18px; cursor: pointer; border-radius: 6px 6px 0 0; color: #8b949e; font-size: .875rem; }
+  .tab.active { background: #161b22; color: #e6edf3; border: 1px solid #30363d; border-bottom: 1px solid #0d1117; }
+  .toolbar { display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }
+  button { cursor: pointer; border: none; border-radius: 6px; padding: 8px 16px; font-size: .875rem; }
+  .btn-primary { background: #238636; color: #fff; }
+  .btn-primary:hover { background: #2ea043; }
+  #status { font-size: .8rem; color: #8b949e; }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+  th { background: #161b22; color: #8b949e; text-align: left; padding: 10px 12px; border-bottom: 1px solid #30363d; }
+  td { padding: 10px 12px; border-bottom: 1px solid #21262d; vertical-align: top; }
+  tr:hover td { background: #161b22; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: .75rem; font-weight: 600; }
+  .badge-aprobable { background: #1a4731; color: #3fb950; }
+  .badge-cautela   { background: #3d2b00; color: #d29922; }
+  .badge-revisar   { background: #1c2a3a; color: #58a6ff; }
+  .badge-rechazar  { background: #3d1a1a; color: #f85149; }
+  .badge-conflicto  { background: #3d1a3d; color: #f778ba; }
+  .badge-posible    { background: #1c2a3a; color: #79c0ff; }
+  .badge-evaluar    { background: #2d1f00; color: #e3b341; }
+  .reasons  { color: #f85149; font-size: .75rem; margin-top: 4px; }
+  .warnings { color: #d29922; font-size: .75rem; margin-top: 2px; }
+  .btn-approve { background: #238636; color: #fff; margin-right: 6px; border-radius: 6px; padding: 5px 10px; font-size: .8rem; border: none; cursor: pointer; }
+  .btn-approve:hover { background: #2ea043; }
+  .btn-reject  { background: #b62324; color: #fff; border-radius: 6px; padding: 5px 10px; font-size: .8rem; border: none; cursor: pointer; }
+  .btn-reject:hover { background: #da3633; }
+  .btn-complete { background: #1f6feb; color: #fff; margin-right: 6px; border-radius: 6px; padding: 5px 10px; font-size: .8rem; border: none; cursor: pointer; }
+  .btn-complete:hover { background: #388bfd; }
+  .btn-complete:disabled { opacity: .4; cursor: not-allowed; }
+  .badge-deploy-progress { background: #1c2a3a; color: #58a6ff; }
+  .badge-deploy-ok       { background: #1a4731; color: #3fb950; }
+  .badge-deploy-fail     { background: #3d1a1a; color: #f85149; }
+  .badge-deploy-unknown  { background: #21262d; color: #8b949e; }
+  a:hover { text-decoration: underline; }
+  a, a:visited { color: #58a6ff; }
+  #error-msg { color: #f85149; margin-bottom: 12px; display: none; }
+  .spinner { display: none; width: 16px; height: 16px; border: 2px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  input[type=date] { background: #161b22; border: 1px solid #30363d; color: #e6edf3; border-radius: 6px; padding: 6px 10px; font-size: .875rem; }
+  select { background: #161b22; border: 1px solid #30363d; color: #e6edf3; border-radius: 6px; padding: 6px 10px; font-size: .875rem; cursor: pointer; }
+  .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .filters label { color: #8b949e; font-size: .875rem; }
+</style>
+</head>
+<body>
+<h1>🔍 PR Dashboard – Salesforce</h1>
+
+<div class="tabs">
+  <div class="tab active"  onclick="switchTab('activos')">Activos</div>
+  <div class="tab" onclick="switchTab('hoy')">Completados hoy</div>
+  <div class="tab" onclick="switchTab('ayer')">Completados ayer</div>
+  <div class="tab" onclick="switchTab('rango')">Por rango</div>
+</div>
+
+<div class="toolbar">
+  <button class="btn-primary" onclick="reload()">↻ Actualizar</button>
+  <div id="range-inputs" style="display:none;gap:8px;align-items:center;display:none">
+    <input type="date" id="date-from">
+    <span style="color:#8b949e">→</span>
+    <input type="date" id="date-to">
+    <button class="btn-primary" onclick="loadRango()">Buscar</button>
+  </div>
+  <div class="spinner" id="spinner"></div>
+  <span id="status"></span>
+</div>
+
+<div class="filters" id="filters" style="display:none">
+  <label>Branch:</label>
+  <select id="filter-branch" onchange="applyFilters()">
+    <option value="">Todos</option>
+  </select>
+  <label>Ordenar:</label>
+  <select id="filter-sort" onchange="applyFilters()">
+    <option value="desc">Más reciente primero</option>
+    <option value="asc">Más antiguo primero</option>
+  </select>
+</div>
+
+<div id="error-msg"></div>
+
+<div class="panel active" id="panel-activos">
+  <table><thead><tr><th>#</th><th>Título</th><th>Autor</th><th>Source → Target</th><th>Scope</th><th>Veredicto</th><th>Acciones</th></tr></thead>
+  <tbody id="body-activos"><tr><td colspan="7" style="color:#8b949e;text-align:center;padding:32px">Cargando...</td></tr></tbody></table>
+</div>
+
+<div class="panel" id="panel-hoy">
+  <table><thead><tr><th>#</th><th>Título</th><th>Autor</th><th>Target</th><th>Cerrado (UTC)</th><th>Deploy</th></tr></thead>
+  <tbody id="body-hoy"><tr><td colspan="6" style="color:#8b949e;text-align:center;padding:32px">Cargando...</td></tr></tbody></table>
+</div>
+
+<div class="panel" id="panel-ayer">
+  <table><thead><tr><th>#</th><th>Título</th><th>Autor</th><th>Target</th><th>Cerrado (UTC)</th><th>Deploy</th></tr></thead>
+  <tbody id="body-ayer"><tr><td colspan="6" style="color:#8b949e;text-align:center;padding:32px">Cargando...</td></tr></tbody></table>
+</div>
+
+<div class="panel" id="panel-rango">
+  <table><thead><tr><th>#</th><th>Título</th><th>Autor</th><th>Target</th><th>Cerrado (UTC)</th><th>Deploy</th></tr></thead>
+  <tbody id="body-rango"><tr><td colspan="6" style="color:#8b949e;text-align:center;padding:32px">Selecciona un rango y presiona Buscar</td></tr></tbody></table>
+</div>
+
+<script>
+let currentTab = 'activos';
+let allPRs = {}; // Almacenar PRs por panel
+const verdictClass = { "aprobable":"badge-aprobable","aprobable con cautela":"badge-cautela","revisar":"badge-revisar","rechazar":"badge-rechazar","resolver conflicto":"badge-conflicto","posible aprobación":"badge-posible","evaluar check":"badge-evaluar" };
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['activos','hoy','ayer','rango'][i] === tab));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+  document.getElementById('range-inputs').style.display = tab === 'rango' ? 'flex' : 'none';
+  document.getElementById('filters').style.display = ['hoy','ayer','rango'].includes(tab) ? 'flex' : 'none';
+  if (tab !== 'rango') reload();
+}
+
+function reload() {
+  if (currentTab === 'activos') loadActivos();
+  else if (currentTab === 'hoy') loadCompletados('hoy', '/api/prs/completed');
+  else if (currentTab === 'ayer') loadCompletados('ayer', '/api/prs/completed/yesterday');
+}
+
+async function loadActivos() {
+  setLoading("Consultando PRs activos...");
+  try {
+    const data = await fetch("/api/prs").then(r => r.json());
+    if (!data.ok) throw new Error(data.error);
+    const tbody = document.getElementById("body-activos");
+    tbody.innerHTML = data.prs.length ? data.prs.map(pr => {
+      const cls = verdictClass[pr.verdict] || "badge-revisar";
+      const reasons  = pr.reasons.length  ? `<div class="reasons">✗ ${pr.reasons.join(" · ")}</div>` : "";
+      const warnings = pr.warnings.length ? `<div class="warnings">⚠ ${pr.warnings.join(" · ")}</div>` : "";
+      const canApprove = ["aprobable", "aprobable con cautela", "posible aprobación", "evaluar check"].includes(pr.verdict);
+      const approveLabel  = pr.myVote === 'approved'  ? '✓ Aprobado'   : '✓ Aprobar';
+      const completeLabel = pr.myVote === 'completed' ? '⚡ Completado' : '⚡ Completar';
+      const approveDisabled  = pr.myVote === 'approved' ? 'disabled' : '';
+      const completeDisabled = (!canApprove || pr.myVote === 'completed' || !pr.canComplete) ? 'disabled' : '';
+
+      return `<tr>
+        <td><a href="${pr.url}" target="_blank">${pr.id}</a></td>
+        <td>${esc(pr.title)}${pr.hasConflicts ? '<div class="reasons">⚡ Tiene conflictos de merge</div>' : ''}${reasons}${warnings}</td>
+        <td>${esc(pr.createdBy||"—")}</td>
+        <td style="font-size:.75rem">${esc(pr.source)}<br>→ ${esc(pr.target)}</td>
+        <td>${esc(pr.scope)}<br><span style="color:#8b949e;font-size:.75rem">${pr.changedFiles} archivo(s)</span></td>
+        <td><span class="badge ${cls}">${pr.verdict}</span></td>
+        <td>
+          <button class="btn-approve"  onclick="vote(${pr.id},'approve',this)"  ${approveDisabled}>${approveLabel}</button>
+          <button class="btn-complete" onclick="vote(${pr.id},'complete',this)" ${completeDisabled}>${completeLabel}</button>
+          <button class="btn-reject"   onclick="vote(${pr.id},'reject',this)">✗ Rechazar</button>
+        </td>
+      </tr>`;
+    }).join("") : '<tr><td colspan="7" style="color:#8b949e;text-align:center;padding:32px">No hay PRs activos</td></tr>';
+    setStatus(`${data.prs.length} PR(s) activos`);
+    // Auto-completar PRs donde ya aprobé y el TA también aprobó
+    for (const pr of data.prs) {
+      if (pr.myVote === 'approved' && pr.canComplete) {
+        autoComplete(pr.id);
+      }
+    }
+  } catch(e) { setError(e.message); }
+}
+
+async function loadCompletados(panel, url) {
+  setLoading("Consultando...");
+  try {
+    const data = await fetch(url).then(r => r.json());
+    if (!data.ok) throw new Error(data.error);
+    allPRs[panel] = data.prs;
+    updateBranchFilter(data.prs);
+    applyFilters();
+    setStatus(`${data.prs.length} PR(s)`);
+  } catch(e) { setError(e.message); }
+}
+
+async function loadRango() {
+  const from = document.getElementById("date-from").value;
+  const to   = document.getElementById("date-to").value;
+  if (!from || !to) { alert("Selecciona ambas fechas."); return; }
+  setLoading("Consultando rango...");
+  try {
+    const data = await fetch(`/api/prs/completed/range?from=${from}&to=${to}`).then(r => r.json());
+    if (!data.ok) throw new Error(data.error);
+    allPRs['rango'] = data.prs;
+    updateBranchFilter(data.prs);
+    applyFilters();
+    setStatus(`${data.prs.length} PR(s) entre ${from} y ${to}`);
+  } catch(e) { setError(e.message); }
+}
+
+function updateBranchFilter(prs) {
+  const branches = [...new Set(prs.map(pr => pr.target))].sort();
+  const sel = document.getElementById('filter-branch');
+  sel.innerHTML = '<option value="">Todos</option>' + branches.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+}
+
+function applyFilters() {
+  const panel = currentTab;
+  const prs = allPRs[panel] || [];
+  const branch = document.getElementById('filter-branch').value;
+  const sort = document.getElementById('filter-sort').value;
+  
+  let filtered = branch ? prs.filter(pr => pr.target === branch) : prs;
+  filtered = filtered.sort((a, b) => {
+    const dateA = new Date(a.closedDate);
+    const dateB = new Date(b.closedDate);
+    return sort === 'desc' ? dateB - dateA : dateA - dateB;
+  });
+  
+  renderCompletados(`body-${panel}`, filtered);
+}
+
+function renderCompletados(bodyId, prs) {
+  document.getElementById(bodyId).innerHTML = prs.length ? prs.map(pr => `<tr>
+    <td><a href="${pr.url}" target="_blank">${pr.id}</a></td>
+    <td>${esc(pr.title)}</td>
+    <td>${esc(pr.createdBy)}</td>
+    <td><span class="badge badge-completed">${esc(pr.target)}</span></td>
+    <td style="font-size:.75rem;color:#8b949e">${pr.closedDate.replace('T',' ').slice(0,16)}</td>
+    <td><span class="badge badge-deploy-unknown" id="deploy-${pr.id}">⏳ Consultando...</span></td>
+  </tr>`).join("") : '<tr><td colspan="6" style="color:#8b949e;text-align:center;padding:32px">No hay PRs en este período</td></tr>';
+  prs.forEach(pr => pollDeploy(pr.id, pr.closedDate, pr.target, pr.mergeCommit));
+}
+
+async function vote(prId, action, btn) {
+  const row = btn.closest("tr");
+  row.querySelectorAll("button").forEach(b => b.disabled = true);
+  const body = action === "reject" ? { comment: prompt("Motivo del rechazo:") || "PR rechazado tras revisión." } : {};
+  try {
+    const data = await fetch(`/api/pr/${prId}/${action}`, {
+      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)
+    }).then(r => r.json());
+    if (!data.ok) throw new Error(data.error);
+    if (action === "approve")  btn.textContent = "✓ Aprobado";
+    if (action === "complete") btn.textContent = "⚡ Completado";
+    row.style.opacity = "0.4";
+
+    // Si aprobé → verificar si el complete está listo
+    if (action === "approve") {
+      const completeBtn = row.querySelector(".btn-complete");
+      completeBtn.textContent = "⏳ Verificando...";
+      await new Promise(r => setTimeout(r, 2000));
+      const fresh = await fetch("/api/prs").then(r => r.json()).catch(() => null);
+      const freshPr = fresh?.prs?.find(p => p.id === prId);
+      if (freshPr?.canComplete) {
+        // TA ya aprobó → completar automáticamente
+        completeBtn.textContent = "⏳ Completando...";
+        const res = await fetch(`/api/pr/${prId}/complete`, { method: "POST" }).then(r => r.json());
+        if (res.ok) {
+          completeBtn.textContent = "⚡ Completado";
+        } else {
+          completeBtn.textContent = "⚠ " + res.error;
+          completeBtn.disabled = false;
+        }
+      } else {
+        // TA no ha aprobado → notificar en Slack
+        completeBtn.textContent = "⏳ Notificando TA...";
+        const res = await fetch(`/api/pr/${prId}/request-ta-approval`, { method: "POST" }).then(r => r.json());
+        completeBtn.textContent = res.ok ? "📨 TA notificado" : "⚠ " + res.error;
+      }
+    }
+  } catch(e) {
+    alert("Error: " + e.message);
+    row.querySelectorAll("button").forEach(b => b.disabled = false);
+  }
+}
+
+const deployLabels = { inProgress: "⏳ In progress", succeeded: "✅ Despliegue completado", failed: "❌ Despliegue fallido", unknown: "—" };
+const deployClass  = { inProgress: "badge-deploy-progress", succeeded: "badge-deploy-ok", failed: "badge-deploy-fail", unknown: "badge-deploy-unknown" };
+const deployCache  = {};
+
+async function pollDeploy(prId, closedDate, target, mergeCommit) {
+  const el = document.getElementById(`deploy-${prId}`);
+  if (!el) return;
+  if (deployCache[prId] && deployCache[prId] !== "inProgress") {
+    const s = deployCache[prId];
+    el.className = `badge ${deployClass[s]}`;
+    el.textContent = deployLabels[s];
+    return;
+  }
+  const params = new URLSearchParams();
+  if (mergeCommit) params.set("mergeCommit", mergeCommit);
+  if (closedDate)  params.set("closedDate", closedDate);
+  if (target)      params.set("target", target);
+  const data = await fetch(`/api/pr/${prId}/deploy-status?${params}`).then(r => r.json()).catch(() => null);
+  if (!data) return;
+  const s = data.status;
+  deployCache[prId] = s;
+  el.className = `badge ${deployClass[s] || deployClass.unknown}`;
+  el.textContent = deployLabels[s] || "—";
+  if (s === "inProgress") {
+    setTimeout(() => pollDeploy(prId, closedDate, target, mergeCommit), 15000);
+  } else if (s === "succeeded" || s === "failed") {
+    fetch(`/api/pr/${prId}/notify-deploy`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({status: s})
+    });
+  }
+}
+
+const _autoCompleted = new Set();
+
+async function autoComplete(prId) {
+  if (_autoCompleted.has(prId)) return;
+  _autoCompleted.add(prId);
+  try {
+    const res = await fetch(`/api/pr/${prId}/complete`, { method: "POST" }).then(r => r.json());
+    if (res.ok) {
+      console.log(`PR ${prId} completado automáticamente`);
+      setTimeout(loadActivos, 2000); // refrescar tabla
+    } else {
+      _autoCompleted.delete(prId); // permitir reintento si falló
+    }
+  } catch { _autoCompleted.delete(prId); }
+}
+
+function setLoading(msg) {
+  document.getElementById("spinner").style.display = "inline-block";
+  document.getElementById("status").textContent = msg;
+  document.getElementById("error-msg").style.display = "none";
+}
+function setStatus(msg) {
+  document.getElementById("spinner").style.display = "none";
+  document.getElementById("status").textContent = msg + " · " + new Date().toLocaleTimeString();
+}
+function setError(msg) {
+  document.getElementById("spinner").style.display = "none";
+  document.getElementById("status").textContent = "";
+  const e = document.getElementById("error-msg");
+  e.textContent = "Error: " + msg; e.style.display = "block";
+}
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// Init
+const today = new Date().toISOString().slice(0,10);
+document.getElementById("date-from").value = today;
+document.getElementById("date-to").value = today;
+loadActivos();
+setInterval(reload, 60000);
+</script>
+</body>
+</html>
