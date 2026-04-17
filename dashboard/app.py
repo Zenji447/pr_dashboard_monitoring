@@ -10,7 +10,7 @@ from flask import Flask, jsonify, render_template, request
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from check_salesforce_prs import (
     classify, fetch_changes, get_token, normalize_ref,
-    load_state, save_state, get_my_vote, LOCAL_REPO, _yaml_content_cache
+    load_state, save_state, get_my_vote
 )
 
 ORG_URL = "https://dev.azure.com/OrgClaroColombia"
@@ -227,14 +227,6 @@ def get_prs():
         "--repository", REPOSITORY, "--org", ORG_URL, "--project", PROJECT, "-o", "json",
     ]))
     prs = [pr for pr in prs if normalize_ref(pr.get("targetRefName", "")) in {"develop", "develop-pr", "releaseproyecto/r6"}]
-    # Un solo fetch para tener todas las ramas remotas actualizadas
-    subprocess.run(
-        ["git", "-C", LOCAL_REPO, "fetch", "--all", "-q"],
-        capture_output=True,
-        env={**__import__("os").environ, "GIT_TERMINAL_PROMPT": "0"},
-        timeout=15
-    )
-    _yaml_content_cache.clear()
     state = load_state()
     seen = state.setdefault("seen", {})
     reports = []

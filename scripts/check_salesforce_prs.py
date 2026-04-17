@@ -204,18 +204,13 @@ def component_in_forceapp_manifest(target_ref, release_key, member_name):
     return False, None
 
 
-_yaml_content_cache = {}
-
 def check_yaml_duplicates(source_ref, paths):
     """Detecta componentes duplicados en archivos YAML del PR."""
     duplicates = []
     yaml_files = [p for p in paths if p.endswith('.yaml') or p.endswith('.yml')]
     
     for yaml_path in yaml_files:
-        cache_key = f"{source_ref}:{yaml_path}"
-        if cache_key not in _yaml_content_cache:
-            _yaml_content_cache[cache_key] = file_content(source_ref, yaml_path.lstrip('/'))
-        content = _yaml_content_cache[cache_key]
+        content = file_content(source_ref, yaml_path.lstrip('/'))
         if not content:
             continue
         
