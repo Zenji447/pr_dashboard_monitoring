@@ -270,7 +270,7 @@ def prs_completed_by_date(date_from, date_to):
     prs = json.loads(run([
         "az", "repos", "pr", "list", "--status", "completed",
         "--repository", REPOSITORY, "--org", ORG_URL, "--project", PROJECT,
-        "--top", "100", "--query-order", "lastUpdatedDescending", "-o", "json",
+        "--top", "100", "-o", "json",
     ]))
     return [
         {
