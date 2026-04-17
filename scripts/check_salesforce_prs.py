@@ -165,7 +165,10 @@ def path_exists_in_ref(ref, path):
 
 def file_content(ref, path):
     try:
-        return run(["git", "-C", LOCAL_REPO, "show", f"{ref}:{path}"])
+        return subprocess.check_output(
+            ["git", "-C", LOCAL_REPO, "show", f"{ref}:{path}"],
+            text=True, timeout=5, stderr=subprocess.DEVNULL
+        )
     except Exception:
         return None
 
