@@ -278,7 +278,7 @@ def get_prs():
             and target_branch in auto_cfg.get("branches", [])
             and not report["hasConflicts"]
             and policy_status == "approved"
-            and report["verdict"] in ("aprobable", "aprobable con cautela")
+            and report["verdict"] in ("aprobable", "aprobable con cautela", "posible aprobación")
             and report["myVote"] != "approved"
         ):
             auto_approved = state.setdefault("auto_approved", [])
