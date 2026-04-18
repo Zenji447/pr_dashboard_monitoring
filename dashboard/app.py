@@ -19,6 +19,16 @@ REPOSITORY = "SalesForce"
 PIPELINE_ID = 3840
 SLACK_PR_CHANNEL = "C080K9D6EG2"
 
+AUTO_APPROVE_CONFIG_PATH = Path(__file__).parent.parent / "memoria" / "auto_approve_config.json"
+
+def load_auto_approve_config():
+    if AUTO_APPROVE_CONFIG_PATH.exists():
+        return json.loads(AUTO_APPROVE_CONFIG_PATH.read_text())
+    return {"enabled": False, "branches": []}
+
+def save_auto_approve_config(cfg):
+    AUTO_APPROVE_CONFIG_PATH.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+
 TA_SLACK_IDS = {
     "gustavo alonso muciño": "U06JUHG1G9Y",
     "hugo revuelta":         "U07TQ8JNMBR",
@@ -259,8 +269,33 @@ def get_prs():
             report["verdict"] = "evaluar check"
         elif policy_status == "running" and report["verdict"] not in ("rechazar", "revisar"):
             report["verdict"] = "posible aprobación"
+
+        # Auto-aprobación
+        auto_cfg = load_auto_approve_config()
+        target_branch = normalize_ref(pr.get("targetRefName", ""))
+        if (
+            auto_cfg.get("enabled")
+            and target_branch in auto_cfg.get("branches", [])
+            and not report["hasConflicts"]
+            and policy_status == "approved"
+            and report["verdict"] in ("aprobable", "aprobable con cautela")
+            and report["myVote"] != "approved"
+        ):
+            auto_approved = state.setdefault("auto_approved", [])
+            if int(pr_id) not in auto_approved:
+                try:
+                    subprocess.run([
+                        "az", "repos", "pr", "set-vote", "--id", pr_id,
+                        "--vote", "approve", "--org", ORG_URL, "-o", "json"
+                    ], capture_output=True, text=True)
+                    notify_pr_slack(int(pr_id), "approve")
+                    auto_approved.append(int(pr_id))
+                    report["myVote"] = "approved"
+                    report["canComplete"] = True
+                except Exception:
+                    pass
+
         reports.append(report)
-        seen[pr_id] = f"{pr.get('lastMergeSourceCommit', {}).get('commitId', '')}:{pr.get('status', '')}"
     save_state(state)
     priority = {"rechazar": 0, "revisar": 1, "aprobable con cautela": 2, "aprobable": 3}
     return sorted(reports, key=lambda x: (priority.get(x["verdict"], 9), x["id"]))
@@ -443,6 +478,22 @@ def request_ta_approval(pr_id):
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/config/auto-approve", methods=["GET"])
+def get_auto_approve_config():
+    return jsonify(load_auto_approve_config())
+
+@app.route("/api/config/auto-approve", methods=["POST"])
+def set_auto_approve_config():
+    data = request.get_json(silent=True) or {}
+    cfg = load_auto_approve_config()
+    if "enabled" in data:
+        cfg["enabled"] = bool(data["enabled"])
+    if "branches" in data:
+        cfg["branches"] = list(data["branches"])
+    save_auto_approve_config(cfg)
+    return jsonify({"ok": True, "config": cfg})
 
 
 if __name__ == "__main__":

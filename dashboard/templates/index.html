@@ -51,10 +51,39 @@
   select { background: #161b22; border: 1px solid #30363d; color: #e6edf3; border-radius: 6px; padding: 6px 10px; font-size: .875rem; cursor: pointer; }
   .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
   .filters label { color: #8b949e; font-size: .875rem; }
+  /* Auto-approve config */
+  .config-box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .toggle-wrap { display: flex; align-items: center; gap: 10px; }
+  .toggle { position: relative; width: 44px; height: 24px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; inset: 0; background: #30363d; border-radius: 24px; cursor: pointer; transition: .2s; }
+  .toggle-slider:before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .toggle input:checked + .toggle-slider { background: #238636; }
+  .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+  .toggle-label { font-size: .875rem; font-weight: 600; }
+  .branch-checks { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .branch-checks label { display: flex; align-items: center; gap: 5px; font-size: .8rem; color: #c9d1d9; cursor: pointer; background: #21262d; padding: 4px 10px; border-radius: 12px; border: 1px solid #30363d; }
+  .branch-checks input[type=checkbox]:checked + span { color: #3fb950; }
+  .auto-status { font-size: .75rem; color: #8b949e; margin-left: auto; }
 </style>
 </head>
 <body>
 <h1>🔍 PR Dashboard – Salesforce</h1>
+
+<!-- Auto-approve config -->
+<div class="config-box">
+  <div class="toggle-wrap">
+    <label class="toggle">
+      <input type="checkbox" id="auto-approve-toggle" onchange="toggleAutoApprove(this.checked)">
+      <span class="toggle-slider"></span>
+    </label>
+    <span class="toggle-label">Auto-aprobación</span>
+  </div>
+  <div class="branch-checks" id="branch-checks">
+    <!-- branches se cargan dinámicamente -->
+  </div>
+  <span class="auto-status" id="auto-status">Cargando config...</span>
+</div>
 
 <div class="tabs">
   <div class="tab active"  onclick="switchTab('activos')">Activos</div>
@@ -298,7 +327,7 @@ async function pollDeploy(prId, closedDate, target, mergeCommit) {
   el.className = `badge ${deployClass[s] || deployClass.unknown}`;
   el.textContent = deployLabels[s] || "—";
   if (s === "inProgress") {
-    setTimeout(() => pollDeploy(prId, closedDate, target, mergeCommit), 15000);
+    setTimeout(() => pollDeploy(prId, closedDate, target, mergeCommit), 60000);
   } else if (s === "succeeded" || s === "failed") {
     fetch(`/api/pr/${prId}/notify-deploy`, {
       method: "POST",
@@ -341,10 +370,74 @@ function setError(msg) {
 }
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
+// ── Auto-approve config ──────────────────────────────────────────────────────
+const KNOWN_BRANCHES = ["develop", "develop-pr", "releaseproyecto/r6"];
+let autoConfig = { enabled: false, branches: [] };
+
+async function loadAutoApproveConfig() {
+  try {
+    autoConfig = await fetch("/api/config/auto-approve").then(r => r.json());
+    document.getElementById("auto-approve-toggle").checked = autoConfig.enabled;
+    renderBranchChecks();
+    updateAutoStatus();
+  } catch(e) { document.getElementById("auto-status").textContent = "Error cargando config"; }
+}
+
+function renderBranchChecks() {
+  const container = document.getElementById("branch-checks");
+  container.innerHTML = KNOWN_BRANCHES.map(b => `
+    <label>
+      <input type="checkbox" value="${esc(b)}" ${autoConfig.branches.includes(b) ? "checked" : ""}
+        onchange="toggleBranch('${esc(b)}', this.checked)">
+      <span>${esc(b)}</span>
+    </label>`).join("");
+}
+
+async function toggleAutoApprove(enabled) {
+  autoConfig.enabled = enabled;
+  await saveAutoApproveConfig();
+}
+
+async function toggleBranch(branch, checked) {
+  if (checked) {
+    if (!autoConfig.branches.includes(branch)) autoConfig.branches.push(branch);
+  } else {
+    autoConfig.branches = autoConfig.branches.filter(b => b !== branch);
+  }
+  await saveAutoApproveConfig();
+}
+
+async function saveAutoApproveConfig() {
+  try {
+    const res = await fetch("/api/config/auto-approve", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(autoConfig)
+    }).then(r => r.json());
+    autoConfig = res.config;
+    updateAutoStatus();
+  } catch(e) { document.getElementById("auto-status").textContent = "Error guardando config"; }
+}
+
+function updateAutoStatus() {
+  const el = document.getElementById("auto-status");
+  if (!autoConfig.enabled) {
+    el.textContent = "Auto-aprobación desactivada";
+    el.style.color = "#8b949e";
+  } else if (autoConfig.branches.length === 0) {
+    el.textContent = "⚠ Activa pero sin branches seleccionadas";
+    el.style.color = "#d29922";
+  } else {
+    el.textContent = `✅ Activa en: ${autoConfig.branches.join(", ")}`;
+    el.style.color = "#3fb950";
+  }
+}
+
 // Init
 const today = new Date().toISOString().slice(0,10);
 document.getElementById("date-from").value = today;
 document.getElementById("date-to").value = today;
+loadAutoApproveConfig();
 loadActivos();
 setInterval(reload, 60000);
 </script>
