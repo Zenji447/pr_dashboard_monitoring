@@ -404,6 +404,20 @@ def approve(pr_id):
             notify_pr_slack(pr_id, "approve")
             approved_notified.append(pr_id)
             save_state(state)
+        # Notificar al TA si aún no se ha hecho
+        state = load_state()
+        ta_notified = state.setdefault("ta_notified", [])
+        if pr_id not in ta_notified:
+            thread_ts = find_pr_thread(pr_id, save_if_found=True)
+            if thread_ts:
+                mentions = get_pr_ta_reviewers(pr_id) or ["TA Reviewer"]
+                slack_api("chat.postMessage", {
+                    "channel": SLACK_PR_CHANNEL,
+                    "thread_ts": thread_ts,
+                    "text": f"{' '.join(mentions)} por favor revisa este PR 🙏"
+                })
+            ta_notified.append(pr_id)
+            save_state(state)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
