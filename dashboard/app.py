@@ -302,6 +302,17 @@ def get_prs():
                         if thread_ts:
                             payload["thread_ts"] = thread_ts
                         slack_api("chat.postMessage", payload)
+                        # Notificar al TA para que revise
+                        ta_notified = state.setdefault("ta_notified", [])
+                        if int(pr_id) not in ta_notified:
+                            mentions = get_pr_ta_reviewers(int(pr_id)) or ["TA Reviewer"]
+                            if thread_ts:
+                                slack_api("chat.postMessage", {
+                                    "channel": SLACK_PR_CHANNEL,
+                                    "thread_ts": thread_ts,
+                                    "text": f"{' '.join(mentions)} por favor revisa este PR 🙏"
+                                })
+                            ta_notified.append(int(pr_id))
                         auto_approved.append(int(pr_id))
                         report["myVote"] = "approved"
                         report["canComplete"] = True
