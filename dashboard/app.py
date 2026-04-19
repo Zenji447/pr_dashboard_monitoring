@@ -291,7 +291,7 @@ def get_prs():
                     ], capture_output=True, text=True)
                     if result.returncode == 0:
                         thread_ts = find_pr_thread(int(pr_id), save_if_found=True)
-                        payload = {"channel": SLACK_PR_CHANNEL, "text": "✅ Aprobado (auto)"}
+                        payload = {"channel": SLACK_PR_CHANNEL, "text": "✅ Aprobado"}
                         if thread_ts:
                             payload["thread_ts"] = thread_ts
                         slack_api("chat.postMessage", payload)
