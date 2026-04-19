@@ -270,6 +270,10 @@ def get_prs():
         elif policy_status == "running" and report["verdict"] not in ("rechazar", "revisar"):
             report["verdict"] = "posible aprobación"
 
+        # Si ya aprobé pero el TA no ha aprobado aún
+        if report["myVote"] == "approved" and not report["canComplete"] and not report["hasConflicts"]:
+            report["verdict"] = "TA Reviewer"
+
         # Auto-aprobación
         auto_cfg = load_auto_approve_config()
         target_branch = normalize_ref(pr.get("targetRefName", ""))

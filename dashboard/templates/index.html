@@ -27,6 +27,7 @@
   .badge-conflicto  { background: #3d1a3d; color: #f778ba; }
   .badge-posible    { background: #1c2a3a; color: #79c0ff; }
   .badge-evaluar    { background: #2d1f00; color: #e3b341; }
+  .badge-ta-reviewer { background: #1a2a3a; color: #a5d6ff; }
   .reasons  { color: #f85149; font-size: .75rem; margin-top: 4px; }
   .warnings { color: #d29922; font-size: .75rem; margin-top: 2px; }
   .btn-approve { background: #238636; color: #fff; margin-right: 6px; border-radius: 6px; padding: 5px 10px; font-size: .8rem; border: none; cursor: pointer; }
@@ -141,7 +142,7 @@
 <script>
 let currentTab = 'activos';
 let allPRs = {}; // Almacenar PRs por panel
-const verdictClass = { "aprobable":"badge-aprobable","aprobable con cautela":"badge-cautela","revisar":"badge-revisar","rechazar":"badge-rechazar","resolver conflicto":"badge-conflicto","posible aprobación":"badge-posible","evaluar check":"badge-evaluar" };
+const verdictClass = { "aprobable":"badge-aprobable","aprobable con cautela":"badge-cautela","revisar":"badge-revisar","rechazar":"badge-rechazar","resolver conflicto":"badge-conflicto","posible aprobación":"badge-posible","evaluar check":"badge-evaluar","TA Reviewer":"badge-ta-reviewer" };
 
 function switchTab(tab) {
   currentTab = tab;
