@@ -285,19 +285,19 @@ def get_prs():
             auto_approved = state.setdefault("auto_approved", [])
             if int(pr_id) not in auto_approved:
                 try:
-                    subprocess.run([
+                    result = subprocess.run([
                         "az", "repos", "pr", "set-vote", "--id", pr_id,
                         "--vote", "approve", "--org", ORG_URL, "-o", "json"
                     ], capture_output=True, text=True)
-                    # Notificar sin bloquear: usar find (no wait) para no colgar el request
-                    thread_ts = find_pr_thread(int(pr_id), save_if_found=True)
-                    payload = {"channel": SLACK_PR_CHANNEL, "text": "✅ Aprobado (auto)"}
-                    if thread_ts:
-                        payload["thread_ts"] = thread_ts
-                    slack_api("chat.postMessage", payload)
-                    auto_approved.append(int(pr_id))
-                    report["myVote"] = "approved"
-                    report["canComplete"] = True
+                    if result.returncode == 0:
+                        thread_ts = find_pr_thread(int(pr_id), save_if_found=True)
+                        payload = {"channel": SLACK_PR_CHANNEL, "text": "✅ Aprobado (auto)"}
+                        if thread_ts:
+                            payload["thread_ts"] = thread_ts
+                        slack_api("chat.postMessage", payload)
+                        auto_approved.append(int(pr_id))
+                        report["myVote"] = "approved"
+                        report["canComplete"] = True
                 except Exception:
                     pass
 
