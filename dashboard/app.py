@@ -306,7 +306,7 @@ def get_prs():
                         ta_notified = state.setdefault("ta_notified", [])
                         if int(pr_id) not in ta_notified:
                             mentions = get_pr_ta_reviewers(int(pr_id))
-                            text = f"{' '.join(mentions)} por favor revisa este PR 🙏" if mentions else "por favor revisa este PR 🙏"
+                            text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
                             slack_api("chat.postMessage", {
                                 "channel": SLACK_PR_CHANNEL,
                                 "thread_ts": thread_ts,
@@ -411,7 +411,7 @@ def approve(pr_id):
             thread_ts = find_pr_thread(pr_id, save_if_found=True)
             if thread_ts:
                 mentions = get_pr_ta_reviewers(pr_id)
-                text = f"{' '.join(mentions)} por favor revisa este PR 🙏" if mentions else "por favor revisa este PR 🙏"
+                text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
                 slack_api("chat.postMessage", {
                     "channel": SLACK_PR_CHANNEL,
                     "thread_ts": thread_ts,
@@ -510,7 +510,7 @@ def request_ta_approval(pr_id):
         mentions = get_pr_ta_reviewers(pr_id) or ["TA Reviewer"]
         slack_api("chat.postMessage", {
             "channel": SLACK_PR_CHANNEL, "thread_ts": thread_ts,
-            "text": f"{' '.join(mentions)} por favor revisa este PR 🙏"
+            "text": f"{' '.join(mentions)} TA por favor revisa este PR"
         })
         ta_notified.append(pr_id)
         save_state(state)
