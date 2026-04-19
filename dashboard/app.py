@@ -288,7 +288,12 @@ def get_prs():
                         "az", "repos", "pr", "set-vote", "--id", pr_id,
                         "--vote", "approve", "--org", ORG_URL, "-o", "json"
                     ], capture_output=True, text=True)
-                    notify_pr_slack(int(pr_id), "approve")
+                    # Notificar sin bloquear: usar find (no wait) para no colgar el request
+                    thread_ts = find_pr_thread(int(pr_id), save_if_found=True)
+                    payload = {"channel": SLACK_PR_CHANNEL, "text": "✅ Aprobado (auto)"}
+                    if thread_ts:
+                        payload["thread_ts"] = thread_ts
+                    slack_api("chat.postMessage", payload)
                     auto_approved.append(int(pr_id))
                     report["myVote"] = "approved"
                     report["canComplete"] = True
