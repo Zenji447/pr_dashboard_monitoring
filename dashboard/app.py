@@ -283,7 +283,10 @@ def get_prs():
             and report["myVote"] != "approved"
         ):
             auto_approved = state.setdefault("auto_approved", [])
-            if int(pr_id) not in auto_approved:
+            if int(pr_id) not in auto_approved or report["myVote"] != "approved":
+                # Si el voto fue reseteado, remover del set para reintentar
+                if int(pr_id) in auto_approved and report["myVote"] != "approved":
+                    auto_approved.remove(int(pr_id))
                 try:
                     result = subprocess.run([
                         "az", "repos", "pr", "set-vote", "--id", pr_id,
