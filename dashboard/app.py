@@ -866,6 +866,7 @@ def _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, aut
 
 
 @app.route("/api/pr/<int:pr_id>/complete", methods=["POST"])
+@require_api_key
 def complete(pr_id):
     try:
         state = load_state()
@@ -875,8 +876,14 @@ def complete(pr_id):
             "--status", "completed", "--org", ORG_URL, "-o", "json"
         ], capture_output=True, text=True)
         if result.returncode != 0:
-            return jsonify({"ok": False, "error": result.stderr or result.stdout}), 500
-        pr_data = json.loads(result.stdout) if result.stdout.strip().startswith("{") else {}
+            logger.error("[complete] PR %s falló: %s", pr_id, result.stderr)
+            return jsonify({"ok": False, "error": "Error al completar el PR"}), 500
+        pr_data = {}
+        if result.stdout.strip().startswith("{"):
+            try:
+                pr_data = json.loads(result.stdout)
+            except json.JSONDecodeError as je:
+                logger.warning("[complete] PR %s: respuesta JSON inválida: %s", pr_id, je)
         author = pr_data.get("createdBy", {}).get("displayName", "")
         blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
         is_blocked = author.lower().strip() in blocked_authors
@@ -884,12 +891,10 @@ def complete(pr_id):
             notify_pr_slack(pr_id, "complete")
             completed_notified.append(pr_id)
             save_state(state)
-        # Iniciar polling de despliegue en background
         merge_commit  = pr_data.get("lastMergeCommit", {}).get("commitId")
         closed_date   = pr_data.get("closedDate", "")
         target_branch = pr_data.get("targetRefName", "")
         _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, author=author)
-        # Registrar PR en Google Sheet
         state = load_state()
         token = get_token()
         approval_date = get_pr_approval_date(pr_id, token)
@@ -905,12 +910,15 @@ def complete(pr_id):
             "policyStatus": policy_status,
         }
         _sheet_append_pr(sheet_pr, auto_approved=pr_id in state.get("auto_approved", []), approval_date=approval_date)
+        logger.info("[complete] PR %s completado", pr_id)
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[complete] PR %s excepción: %s", pr_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error interno al completar"}), 500
 
 
 @app.route("/api/pr/<int:pr_id>/notify-deploy", methods=["POST"])
+@require_api_key
 def notify_deploy(pr_id):
     try:
         state = load_state()
@@ -919,6 +927,8 @@ def notify_deploy(pr_id):
             return jsonify({"ok": True})
         data   = request.get_json(silent=True) or {}
         status = data.get("status", "")
+        if status not in ("succeeded", "failed", "inProgress", "unknown"):
+            return jsonify({"ok": False, "error": "Estado de deploy inválido"}), 400
         text   = "✅ Despliegue completado" if status == "succeeded" else "❌ Despliegue fallido"
         thread_ts = find_pr_thread(pr_id, save_if_found=True)
         if not thread_ts:
@@ -928,38 +938,46 @@ def notify_deploy(pr_id):
         save_state(state)
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[notify-deploy] PR %s excepción: %s", pr_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error interno al notificar deploy"}), 500
 
 
 @app.route("/api/pr/<int:pr_id>/deploy-status")
 def deploy_status(pr_id):
-    merge_commit  = request.args.get("mergeCommit", "")
-    closed_date   = request.args.get("closedDate", "")
-    target_branch = request.args.get("target", "")
-    status, _ = get_deploy_status(pr_id, merge_commit, closed_date, target_branch)
-    return jsonify({"ok": True, "status": status})
+    try:
+        merge_commit  = request.args.get("mergeCommit", "")
+        closed_date   = request.args.get("closedDate", "")
+        target_branch = request.args.get("target", "")
+        status, _ = get_deploy_status(pr_id, merge_commit, closed_date, target_branch)
+        return jsonify({"ok": True, "status": status})
+    except Exception as e:
+        logger.error("[deploy-status] PR %s excepción: %s", pr_id, e, exc_info=True)
+        return jsonify({"ok": True, "status": "unknown"})
 
 
 @app.route("/api/pr/<int:pr_id>/request-ta-approval", methods=["POST"])
+@require_api_key
 def request_ta_approval(pr_id):
-    import time
     try:
         state = load_state()
         ta_notified = state.setdefault("ta_notified", [])
         if pr_id in ta_notified:
             return jsonify({"ok": True, "already_notified": True})
         thread_ts = wait_for_pr_thread(pr_id)
+        if not thread_ts:
+            return jsonify({"ok": False, "error": "No se encontró el hilo del PR"}), 404
         time.sleep(5)
-        mentions = get_pr_ta_reviewers(pr_id) or ["TA Reviewer"]
+        mentions = get_pr_ta_reviewers(pr_id) or []
+        text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
         slack_api("chat.postMessage", {
-            "channel": SLACK_PR_CHANNEL, "thread_ts": thread_ts,
-            "text": f"{' '.join(mentions)} TA por favor revisa este PR"
+            "channel": SLACK_PR_CHANNEL, "thread_ts": thread_ts, "text": text
         })
         ta_notified.append(pr_id)
         save_state(state)
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[request-ta-approval] PR %s excepción: %s", pr_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error interno al notificar TA"}), 500
 
 
 @app.route("/api/config/auto-approve", methods=["GET"])
