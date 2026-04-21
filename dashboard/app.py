@@ -985,15 +985,22 @@ def get_auto_approve_config():
     return jsonify(load_auto_approve_config())
 
 @app.route("/api/config/auto-approve", methods=["POST"])
+@require_api_key
 def set_auto_approve_config():
-    data = request.get_json(silent=True) or {}
-    cfg = load_auto_approve_config()
-    if "enabled" in data:
-        cfg["enabled"] = bool(data["enabled"])
-    if "branches" in data:
-        cfg["branches"] = list(data["branches"])
-    save_auto_approve_config(cfg)
-    return jsonify({"ok": True, "config": cfg})
+    try:
+        data = request.get_json(silent=True) or {}
+        cfg = load_auto_approve_config()
+        if "enabled" in data:
+            cfg["enabled"] = bool(data["enabled"])
+        if "branches" in data:
+            branches = list(data["branches"])
+            # Validar que sean strings no vacíos
+            cfg["branches"] = [str(b).strip() for b in branches if str(b).strip()]
+        save_auto_approve_config(cfg)
+        return jsonify({"ok": True, "config": cfg})
+    except Exception as e:
+        logger.error("[config/auto-approve] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error guardando configuración"}), 500
 
 
 @app.route("/api/config/blocked-authors", methods=["GET"])
@@ -1001,11 +1008,24 @@ def get_blocked_authors():
     return jsonify(load_blocked_authors())
 
 @app.route("/api/config/blocked-authors", methods=["POST"])
+@require_api_key
 def set_blocked_authors():
-    data = request.get_json(silent=True) or {}
-    authors = list(data.get("authors", []))
-    save_blocked_authors(authors)
-    return jsonify({"ok": True, "authors": authors})
+    try:
+        data = request.get_json(silent=True) or {}
+        authors = list(data.get("authors", []))
+        # Validar: solo strings, máx 200 chars cada uno, máx 100 autores
+        validated = []
+        for a in authors:
+            a = str(a).strip()
+            if a and len(a) <= 200:
+                validated.append(a)
+        if len(validated) > 100:
+            return jsonify({"ok": False, "error": "Máximo 100 autores bloqueados"}), 400
+        save_blocked_authors(validated)
+        return jsonify({"ok": True, "authors": validated})
+    except Exception as e:
+        logger.error("[config/blocked-authors] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error guardando autores bloqueados"}), 500
 
 
 @app.route("/api/stats")
