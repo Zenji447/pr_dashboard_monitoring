@@ -131,40 +131,41 @@ def _sheet_update_deploy(pr_id, deploy_status, deploy_date=""):
     """Actualiza deploy result, fecha deploy y recalcula tiempos en la fila del PR."""
     def _run():
         try:
-            svc = _sheets_service()
-            sheet = svc.spreadsheets()
-            row_num = _sheet_find_row(sheet, pr_id)
-            if not row_num:
-                return
-            # Leer fila completa para recalcular tiempos
-            row_data = sheet.values().get(
-                spreadsheetId=SHEET_ID, range=f"Hoja 1!A{row_num}:R{row_num}"
-            ).execute().get("values", [[]])[0]
-            # Índices (0-based): E=4 creación, F=5 aprobación, G=6 completado, H=7 deploy
-            created   = row_data[4] if len(row_data) > 4 else ""
-            approval  = row_data[5] if len(row_data) > 5 else ""
-            completed = row_data[6] if len(row_data) > 6 else ""
-            deploy_str = deploy_date[:16].replace("T", " ") if deploy_date else ""
-            t_review = _minutes_between(created, approval)
-            t_merge  = _minutes_between(approval, completed)
-            t_deploy = _minutes_between(completed, deploy_str)
-            t_total  = _minutes_between(created, deploy_str) if deploy_str else _minutes_between(created, completed)
-            # Actualizar H (deploy date), I-L (tiempos), O (resultado)
-            updates = [
-                (f"Hoja 1!H{row_num}", [[deploy_str]]),
-                (f"Hoja 1!I{row_num}", [[t_review]]),
-                (f"Hoja 1!J{row_num}", [[t_merge]]),
-                (f"Hoja 1!K{row_num}", [[t_deploy]]),
-                (f"Hoja 1!L{row_num}", [[t_total]]),
-                (f"Hoja 1!O{row_num}", [[deploy_status]]),
-            ]
-            for rng, vals in updates:
-                sheet.values().update(
-                    spreadsheetId=SHEET_ID, range=rng,
-                    valueInputOption="RAW", body={"values": vals},
-                ).execute()
+            def _do():
+                svc = _sheets_service()
+                sheet = svc.spreadsheets()
+                row_num = _sheet_find_row(sheet, pr_id)
+                if not row_num:
+                    logger.warning("[sheets] PR %s no encontrado para actualizar deploy", pr_id)
+                    return
+                row_data = sheet.values().get(
+                    spreadsheetId=SHEET_ID, range=f"Hoja 1!A{row_num}:R{row_num}"
+                ).execute().get("values", [[]])[0]
+                created   = row_data[4] if len(row_data) > 4 else ""
+                approval  = row_data[5] if len(row_data) > 5 else ""
+                completed = row_data[6] if len(row_data) > 6 else ""
+                deploy_str = deploy_date[:16].replace("T", " ") if deploy_date else ""
+                t_review = _minutes_between(created, approval)
+                t_merge  = _minutes_between(approval, completed)
+                t_deploy = _minutes_between(completed, deploy_str)
+                t_total  = _minutes_between(created, deploy_str) if deploy_str else _minutes_between(created, completed)
+                updates = [
+                    (f"Hoja 1!H{row_num}", [[deploy_str]]),
+                    (f"Hoja 1!I{row_num}", [[t_review]]),
+                    (f"Hoja 1!J{row_num}", [[t_merge]]),
+                    (f"Hoja 1!K{row_num}", [[t_deploy]]),
+                    (f"Hoja 1!L{row_num}", [[t_total]]),
+                    (f"Hoja 1!O{row_num}", [[deploy_status]]),
+                ]
+                for rng, vals in updates:
+                    sheet.values().update(
+                        spreadsheetId=SHEET_ID, range=rng,
+                        valueInputOption="RAW", body={"values": vals},
+                    ).execute()
+                logger.info("[sheets] Deploy de PR %s actualizado: %s", pr_id, deploy_status)
+            _retry(_do, retries=3, label="sheets.update_deploy")
         except Exception as e:
-            print(f"[sheets] update deploy error: {e}")
+            logger.error("[sheets] update deploy error definitivo para PR %s: %s", pr_id, e)
     threading.Thread(target=_run, daemon=True).start()
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
