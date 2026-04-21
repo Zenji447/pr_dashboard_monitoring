@@ -173,6 +173,20 @@ def file_content(ref, path):
         return None
 
 
+def file_content_from_api(path, ref, token):
+    """Lee el contenido de un archivo desde Azure DevOps API usando un branch/ref."""
+    try:
+        branch = ref.replace("origin/", "")
+        url = (f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPO_ID}/items"
+               f"?path={path}&versionDescriptor.version={branch}"
+               f"&versionDescriptor.versionType=branch&api-version=7.1")
+        req = Request(url, headers={"Authorization": f"Bearer {token}"})
+        with urlopen(req, timeout=15) as r:
+            return r.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+
+
 def datapack_component_from_path(path):
     parts = (path or "").strip("/").split("/")
     if len(parts) < 4 or parts[0] != "dataPack":
@@ -207,13 +221,17 @@ def component_in_forceapp_manifest(target_ref, release_key, member_name):
     return False, None
 
 
-def check_yaml_duplicates(source_ref, paths):
+def check_yaml_duplicates(source_ref, paths, token=None):
     """Detecta componentes duplicados en archivos YAML del PR."""
     duplicates = []
     yaml_files = [p for p in paths if p.endswith('.yaml') or p.endswith('.yml')]
     
     for yaml_path in yaml_files:
-        content = file_content(source_ref, yaml_path.lstrip('/'))
+        content = None
+        if token:
+            content = file_content_from_api(yaml_path, source_ref, token)
+        if not content:
+            content = file_content(source_ref, yaml_path.lstrip('/'))
         if not content:
             continue
         
@@ -221,12 +239,10 @@ def check_yaml_duplicates(source_ref, paths):
         seen = {}
         for i, line in enumerate(lines, 1):
             stripped = line.strip()
-            # Solo verificar líneas que son items de lista (componentes)
             if stripped and stripped.startswith('- ') and not stripped.startswith('# '):
-                # Normalizar: remover espacios extras al final
                 normalized = ' '.join(stripped.split())
                 if normalized in seen:
-                    component = normalized[2:].strip()  # Remover "- "
+                    component = normalized[2:].strip()
                     duplicates.append({
                         'file': yaml_path,
                         'component': component,
@@ -238,7 +254,7 @@ def check_yaml_duplicates(source_ref, paths):
     return duplicates
 
 
-def classify(pr, changes):
+def classify(pr, changes, token=None):
     title = pr.get("title", "")
     source = normalize_ref(pr.get("sourceRefName", ""))
     target = normalize_ref(pr.get("targetRefName", ""))
@@ -257,7 +273,7 @@ def classify(pr, changes):
     
     # Verificar duplicados en YAMLs
     if source_ref:
-        duplicates = check_yaml_duplicates(source_ref, paths)
+        duplicates = check_yaml_duplicates(source_ref, paths, token=token)
         if duplicates:
             verdict = "rechazar"
             for dup in duplicates:

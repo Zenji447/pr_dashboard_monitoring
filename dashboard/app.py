@@ -2,10 +2,148 @@
 import json
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from flask import Flask, jsonify, render_template, request
+
+# Google Sheets
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+
+SHEET_ID = "1jsYHmGm-2eN5986bgN5jlPO86guNfWmnf980H4TsdO0"
+CREDS_PATH = Path(__file__).parent.parent / "google_credentials.json"
+SHEET_HEADERS = [
+    "PR ID", "Título", "Autor", "Branch destino",
+    "Fecha creación", "Fecha aprobación", "Fecha completado", "Fecha despliegue",
+    "Tiempo revisión (min)", "Tiempo merge (min)", "Tiempo despliegue (min)", "Tiempo total (min)",
+    "Tenía conflictos", "Policy status", "Resultado despliegue", "Auto-aprobado", "Rechazado", "Bloqueado",
+]
+
+def _sheets_service():
+    creds = Credentials.from_service_account_file(
+        str(CREDS_PATH),
+        scopes=["https://www.googleapis.com/auth/spreadsheets"],
+    )
+    return build("sheets", "v4", credentials=creds, cache_discovery=False)
+
+def _minutes_between(a, b):
+    if not a or not b:
+        return ""
+    from datetime import datetime, timezone
+    def parse(s):
+        s = s.rstrip("Z")
+        if "+" in s:
+            s = s[:s.index("+")]
+        return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+    try:
+        return round((parse(b) - parse(a)).total_seconds() / 60)
+    except Exception:
+        return ""
+
+def _pr_to_row(pr, deploy_status="", deploy_date="", approval_date="", auto_approved=False):
+    created   = pr.get("creationDate", "") or pr.get("closedDate", "")
+    completed = pr.get("closedDate", "")
+    t_review  = _minutes_between(created, approval_date)
+    t_merge   = _minutes_between(approval_date, completed)
+    t_deploy  = _minutes_between(completed, deploy_date)
+    t_total   = _minutes_between(created, deploy_date) if deploy_date else _minutes_between(created, completed)
+    return [
+        pr.get("id") or pr.get("pullRequestId", ""),
+        pr.get("title", ""),
+        pr.get("createdBy", ""),
+        pr.get("target", "") or pr.get("targetRefName", ""),
+        created[:16].replace("T", " "),
+        approval_date[:16].replace("T", " ") if approval_date else "",
+        completed[:16].replace("T", " "),
+        deploy_date[:16].replace("T", " ") if deploy_date else "",
+        t_review, t_merge, t_deploy, t_total,
+        "Sí" if pr.get("hasConflicts") else "No",
+        pr.get("policyStatus", ""),
+        deploy_status,
+        "Sí" if auto_approved else "No",
+        "Sí" if pr.get("myVote") == "rejected" else "No",
+        "Sí" if pr.get("blocked") else "No",
+    ]
+
+def _sheet_ensure_headers(sheet):
+    """Escribe headers si la hoja está vacía."""
+    result = sheet.values().get(spreadsheetId=SHEET_ID, range="Hoja 1!A1:A1").execute()
+    if not result.get("values"):
+        sheet.values().update(
+            spreadsheetId=SHEET_ID, range="Hoja 1!A1",
+            valueInputOption="RAW", body={"values": [SHEET_HEADERS]},
+        ).execute()
+
+def _sheet_find_row(sheet, pr_id):
+    """Retorna el número de fila (1-based) donde está el PR, o None."""
+    result = sheet.values().get(spreadsheetId=SHEET_ID, range="Hoja 1!A:A").execute()
+    for i, row in enumerate(result.get("values", []), start=1):
+        if row and str(row[0]) == str(pr_id):
+            return i
+    return None
+
+def _sheet_append_pr(pr_data, auto_approved=False, approval_date=""):
+    """Agrega una fila al Sheet cuando un PR se completa. No bloquea."""
+    def _run():
+        try:
+            svc = _sheets_service()
+            sheet = svc.spreadsheets()
+            _sheet_ensure_headers(sheet)
+            # Si ya existe la fila (reintento), no duplicar
+            if _sheet_find_row(sheet, pr_data.get("pullRequestId") or pr_data.get("id")):
+                return
+            row = _pr_to_row(pr_data, auto_approved=auto_approved, approval_date=approval_date)
+            sheet.values().append(
+                spreadsheetId=SHEET_ID, range="Hoja 1!A1",
+                valueInputOption="RAW", insertDataOption="INSERT_ROWS",
+                body={"values": [row]},
+            ).execute()
+        except Exception as e:
+            print(f"[sheets] append error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+
+def _sheet_update_deploy(pr_id, deploy_status, deploy_date=""):
+    """Actualiza deploy result, fecha deploy y recalcula tiempos en la fila del PR."""
+    def _run():
+        try:
+            svc = _sheets_service()
+            sheet = svc.spreadsheets()
+            row_num = _sheet_find_row(sheet, pr_id)
+            if not row_num:
+                return
+            # Leer fila completa para recalcular tiempos
+            row_data = sheet.values().get(
+                spreadsheetId=SHEET_ID, range=f"Hoja 1!A{row_num}:R{row_num}"
+            ).execute().get("values", [[]])[0]
+            # Índices (0-based): E=4 creación, F=5 aprobación, G=6 completado, H=7 deploy
+            created   = row_data[4] if len(row_data) > 4 else ""
+            approval  = row_data[5] if len(row_data) > 5 else ""
+            completed = row_data[6] if len(row_data) > 6 else ""
+            deploy_str = deploy_date[:16].replace("T", " ") if deploy_date else ""
+            t_review = _minutes_between(created, approval)
+            t_merge  = _minutes_between(approval, completed)
+            t_deploy = _minutes_between(completed, deploy_str)
+            t_total  = _minutes_between(created, deploy_str) if deploy_str else _minutes_between(created, completed)
+            # Actualizar H (deploy date), I-L (tiempos), O (resultado)
+            updates = [
+                (f"Hoja 1!H{row_num}", [[deploy_str]]),
+                (f"Hoja 1!I{row_num}", [[t_review]]),
+                (f"Hoja 1!J{row_num}", [[t_merge]]),
+                (f"Hoja 1!K{row_num}", [[t_deploy]]),
+                (f"Hoja 1!L{row_num}", [[t_total]]),
+                (f"Hoja 1!O{row_num}", [[deploy_status]]),
+            ]
+            for rng, vals in updates:
+                sheet.values().update(
+                    spreadsheetId=SHEET_ID, range=rng,
+                    valueInputOption="RAW", body={"values": vals},
+                ).execute()
+        except Exception as e:
+            print(f"[sheets] update deploy error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from check_salesforce_prs import (
@@ -20,6 +158,7 @@ PIPELINE_ID = 3840
 SLACK_PR_CHANNEL = "C080K9D6EG2"
 
 AUTO_APPROVE_CONFIG_PATH = Path(__file__).parent.parent / "memoria" / "auto_approve_config.json"
+BLOCKED_AUTHORS_PATH = Path(__file__).parent.parent / "memoria" / "blocked_authors.json"
 
 def load_auto_approve_config():
     if AUTO_APPROVE_CONFIG_PATH.exists():
@@ -28,6 +167,14 @@ def load_auto_approve_config():
 
 def save_auto_approve_config(cfg):
     AUTO_APPROVE_CONFIG_PATH.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+
+def load_blocked_authors():
+    if BLOCKED_AUTHORS_PATH.exists():
+        return json.loads(BLOCKED_AUTHORS_PATH.read_text())
+    return ["Glenda Paiva"]
+
+def save_blocked_authors(authors):
+    BLOCKED_AUTHORS_PATH.write_text(json.dumps(authors, indent=2, ensure_ascii=False))
 
 TA_SLACK_IDS = {
     "gustavo alonso muciño": "U06JUHG1G9Y",
@@ -105,7 +252,6 @@ def find_pr_thread(pr_id, save_if_found=False):
 
 
 def wait_for_pr_thread(pr_id, interval=15):
-    import time
     while True:
         ts = find_pr_thread(pr_id, save_if_found=True)
         if ts:
@@ -113,14 +259,17 @@ def wait_for_pr_thread(pr_id, interval=15):
         time.sleep(interval)
 
 
-def notify_pr_slack(pr_id, action):
+def notify_pr_slack(pr_id, action, detail=None):
     labels = {"approve": "✅ Aprobado", "reject": "❌ Rechazado", "complete": "🚀 PR integrado — si no hay conflicto el despliegue estará en curso, te avisamos cuando termine."}
     text = labels.get(action, action)
-    thread_ts = wait_for_pr_thread(pr_id) if action == "approve" else find_pr_thread(pr_id, save_if_found=True)
-    payload = {"channel": SLACK_PR_CHANNEL, "text": text}
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-    slack_api("chat.postMessage", payload)
+    if detail:
+        text += f"\n> {detail}"
+
+    def _send():
+        thread_ts = wait_for_pr_thread(pr_id)
+        slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
+
+    threading.Thread(target=_send, daemon=True).start()
 
 
 def get_pr_ta_reviewers(pr_id, only_pending=True):
@@ -183,26 +332,48 @@ def _release_status(release):
     envs = release.get("environments", [])
     if not envs:
         return "unknown"
-    
+
     statuses = [e.get("status", "") for e in envs]
-    
-    # Si alguno está en progreso, el release está en progreso
+
     if any(s == "inProgress" for s in statuses):
         return "inProgress"
-    
-    # Si alguno está pendiente (notStarted, queued), el release aún no termina
-    if any(s in ("notStarted", "queued") for s in statuses):
-        return "inProgress"
-    
-    # Si alguno falló o fue rechazado, el release falló
+
     if any(s in ("rejected", "failed", "canceled") for s in statuses):
         return "failed"
-    
-    # Solo si TODOS están en estado final exitoso (succeeded o skipped)
-    if all(s in ("succeeded", "skipped") for s in statuses):
+
+    # Ignorar notStarted — para PRs solo corre el Checkonly y el otro queda notStarted
+    active = [s for s in statuses if s != "notStarted"]
+    if active and all(s in ("succeeded", "skipped") for s in active):
         return "succeeded"
-    
+
+    if any(s == "queued" for s in statuses):
+        return "inProgress"
+
     return "inProgress"
+
+
+def get_pr_approval_date(pr_id, token):
+    """Retorna la fecha del primer voto de aprobación (vote=10) en el PR."""
+    try:
+        url = f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}/pullRequests/{pr_id}/reviewers?api-version=7.1"
+        req = Request(url, headers={"Authorization": f"Bearer {token}"})
+        with urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        # Buscar en threads de votos la fecha más temprana de aprobación
+        threads_url = f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}/pullRequests/{pr_id}/threads?api-version=7.1"
+        req2 = Request(threads_url, headers={"Authorization": f"Bearer {token}"})
+        with urlopen(req2, timeout=15) as r2:
+            threads = json.loads(r2.read())
+        dates = []
+        for t in threads.get("value", []):
+            for c in t.get("comments", []):
+                if c.get("commentType") == "system" and "approved" in (c.get("content") or "").lower():
+                    d = c.get("publishedDate") or c.get("lastUpdatedDate")
+                    if d:
+                        dates.append(d)
+        return min(dates) if dates else ""
+    except Exception:
+        return ""
 
 
 def get_pr_policy_status(pr_id, token):
@@ -239,14 +410,16 @@ def get_prs():
     prs = [pr for pr in prs if normalize_ref(pr.get("targetRefName", "")) in {"develop", "develop-pr", "releaseproyecto/r6"}]
     state = load_state()
     seen = state.setdefault("seen", {})
+    blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
     reports = []
     for pr in prs:
         pr_id = str(pr["pullRequestId"])
         changes = fetch_changes(pr_id, token)
-        report = classify(pr, changes)
+        report = classify(pr, changes, token=token)
         report["creationDate"] = pr.get("creationDate", "")
         report["url"] = f"{ORG_URL}/{PROJECT}/_git/{REPOSITORY}/pullrequest/{pr_id}"
         report["myVote"] = get_my_vote(pr)
+        report["blocked"] = (report.get("createdBy") or "").lower().strip() in blocked_authors
         report["hasConflicts"] = pr.get("mergeStatus") == "conflicts"
         policy_status = get_pr_policy_status(pr_id, token)
         report["policyStatus"] = policy_status
@@ -271,7 +444,8 @@ def get_prs():
             report["verdict"] = "posible aprobación"
 
         # Si ya aprobé pero el TA no ha aprobado aún
-        if report["myVote"] == "approved" and not report["canComplete"] and not report["hasConflicts"]:
+        if (report["myVote"] == "approved" and not report["canComplete"]
+                and not report["hasConflicts"] and policy_status not in ("failed", "running")):
             report["verdict"] = "TA Reviewer"
 
         # Auto-aprobación
@@ -281,9 +455,11 @@ def get_prs():
             auto_cfg.get("enabled")
             and target_branch in auto_cfg.get("branches", [])
             and not report["hasConflicts"]
+            and not report["blocked"]
             and policy_status != "failed"
             and report["verdict"] in ("aprobable", "aprobable con cautela", "posible aprobación")
             and not report["reasons"]
+            and not any(".md" in w for w in report.get("warnings", []))
             and report["myVote"] != "approved"
         ):
             auto_approved = state.setdefault("auto_approved", [])
@@ -404,12 +580,12 @@ def approve(pr_id):
             notify_pr_slack(pr_id, "approve")
             approved_notified.append(pr_id)
             save_state(state)
-        # Notificar al TA si aún no se ha hecho
-        state = load_state()
-        ta_notified = state.setdefault("ta_notified", [])
-        if pr_id not in ta_notified:
-            thread_ts = find_pr_thread(pr_id, save_if_found=True)
-            if thread_ts:
+        # Notificar al TA si aún no se ha hecho (en background para no bloquear)
+        def _notify_ta():
+            state = load_state()
+            ta_notified = state.setdefault("ta_notified", [])
+            if pr_id not in ta_notified:
+                thread_ts = wait_for_pr_thread(pr_id, interval=5)  # polling cada 5 seg, máx ~2 min
                 mentions = get_pr_ta_reviewers(pr_id)
                 text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
                 slack_api("chat.postMessage", {
@@ -417,9 +593,12 @@ def approve(pr_id):
                     "thread_ts": thread_ts,
                     "text": text
                 })
-            ta_notified.append(pr_id)
-            save_state(state)
-        return jsonify({"ok": True})
+                ta_notified.append(pr_id)
+                save_state(state)
+        
+        threading.Thread(target=_notify_ta, daemon=True).start()
+        ta_sent = True  # Siempre retorna true porque se notificará en background
+        return jsonify({"ok": True, "ta_notified": ta_sent})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -439,10 +618,39 @@ def reject(pr_id):
             "az", "repos", "pr", "comment", "add", "--id", str(pr_id),
             "--comment", comment, "--org", ORG_URL, "--project", PROJECT, "-o", "none"
         ])
-        notify_pr_slack(pr_id, "reject")
+        notify_pr_slack(pr_id, "reject", comment)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, author=None):
+    """Polling de despliegue en background, independiente del navegador."""
+    def _run():
+        blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
+        if author and author.lower().strip() in blocked_authors:
+            return
+        for _ in range(60):  # máx 60 intentos = ~1 hora
+            time.sleep(60)
+            try:
+                status = get_deploy_status(pr_id, merge_commit, closed_date, target_branch)
+                if status in ("succeeded", "failed"):
+                    state = load_state()
+                    deploy_notified = state.setdefault("deploy_notified", [])
+                    if pr_id not in deploy_notified:
+                        text = "✅ Despliegue completado" if status == "succeeded" else "❌ Despliegue fallido"
+                        thread_ts = find_pr_thread(pr_id, save_if_found=True)
+                        if not thread_ts:
+                            continue  # reintentar hasta encontrar el hilo
+                        slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
+                        deploy_notified.append(pr_id)
+                        save_state(state)
+                    from datetime import datetime, timezone
+                    _sheet_update_deploy(pr_id, status, datetime.now(timezone.utc).isoformat())
+                    return
+            except Exception:
+                pass
+    threading.Thread(target=_run, daemon=True).start()
 
 
 @app.route("/api/pr/<int:pr_id>/complete", methods=["POST"])
@@ -456,10 +664,35 @@ def complete(pr_id):
         ], capture_output=True, text=True)
         if result.returncode != 0:
             return jsonify({"ok": False, "error": result.stderr or result.stdout}), 500
-        if pr_id not in completed_notified:
+        pr_data = json.loads(result.stdout) if result.stdout.strip().startswith("{") else {}
+        author = pr_data.get("createdBy", {}).get("displayName", "")
+        blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
+        is_blocked = author.lower().strip() in blocked_authors
+        if not is_blocked and pr_id not in completed_notified:
             notify_pr_slack(pr_id, "complete")
             completed_notified.append(pr_id)
             save_state(state)
+        # Iniciar polling de despliegue en background
+        merge_commit  = pr_data.get("lastMergeCommit", {}).get("commitId")
+        closed_date   = pr_data.get("closedDate", "")
+        target_branch = pr_data.get("targetRefName", "")
+        _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, author=author)
+        # Registrar PR en Google Sheet
+        state = load_state()
+        token = get_token()
+        approval_date = get_pr_approval_date(pr_id, token)
+        policy_status = get_pr_policy_status(pr_id, token)
+        sheet_pr = {
+            "pullRequestId": pr_id,
+            "title": pr_data.get("title", ""),
+            "createdBy": pr_data.get("createdBy", {}).get("displayName", ""),
+            "targetRefName": target_branch,
+            "creationDate": pr_data.get("creationDate", ""),
+            "closedDate": closed_date,
+            "hasConflicts": pr_data.get("mergeStatus") == "conflicts",
+            "policyStatus": policy_status,
+        }
+        _sheet_append_pr(sheet_pr, auto_approved=pr_id in state.get("auto_approved", []), approval_date=approval_date)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -476,12 +709,9 @@ def notify_deploy(pr_id):
         status = data.get("status", "")
         text   = "✅ Despliegue completado" if status == "succeeded" else "❌ Despliegue fallido"
         thread_ts = find_pr_thread(pr_id, save_if_found=True)
-        payload = {"channel": SLACK_PR_CHANNEL, "text": text}
-        if thread_ts:
-            payload["thread_ts"] = thread_ts
-        else:
+        if not thread_ts:
             return jsonify({"ok": False, "error": f"No se encontró el hilo del PR {pr_id}"}), 404
-        slack_api("chat.postMessage", payload)
+        slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
         deploy_notified.append(pr_id)
         save_state(state)
         return jsonify({"ok": True})
@@ -533,6 +763,61 @@ def set_auto_approve_config():
         cfg["branches"] = list(data["branches"])
     save_auto_approve_config(cfg)
     return jsonify({"ok": True, "config": cfg})
+
+
+@app.route("/api/config/blocked-authors", methods=["GET"])
+def get_blocked_authors():
+    return jsonify(load_blocked_authors())
+
+@app.route("/api/config/blocked-authors", methods=["POST"])
+def set_blocked_authors():
+    data = request.get_json(silent=True) or {}
+    authors = list(data.get("authors", []))
+    save_blocked_authors(authors)
+    return jsonify({"ok": True, "authors": authors})
+
+
+@app.route("/api/prs/export-sheets", methods=["POST"])
+def export_sheets():
+    try:
+        data = request.get_json(silent=True) or {}
+        date_from = data.get("from", "")
+        date_to   = data.get("to", "")
+        if not date_from or not date_to:
+            from datetime import datetime, timezone
+            today = datetime.now(timezone.utc).date().isoformat()
+            date_from = date_to = today
+
+        prs = prs_completed_by_date(date_from, date_to)
+        state = load_state()
+        auto_approved_ids = set(state.get("auto_approved", []))
+
+        rows = [SHEET_HEADERS]
+        for pr in prs:
+            deploy_st = get_deploy_status(
+                pr["id"], pr.get("mergeCommit"), pr.get("closedDate"), pr.get("target")
+            )
+            rows.append(_pr_to_row(
+                pr,
+                deploy_status=deploy_st,
+                auto_approved=pr["id"] in auto_approved_ids,
+            ))
+
+        svc = _sheets_service()
+        sheet = svc.spreadsheets()
+
+        # Limpiar hoja y escribir desde A1
+        sheet.values().clear(spreadsheetId=SHEET_ID, range="Hoja 1").execute()
+        sheet.values().update(
+            spreadsheetId=SHEET_ID,
+            range="Hoja 1!A1",
+            valueInputOption="RAW",
+            body={"values": rows},
+        ).execute()
+
+        return jsonify({"ok": True, "rows": len(rows) - 1})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":

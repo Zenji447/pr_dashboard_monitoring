@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Auto Commit on Save",
+  "description": "Hace un git add y git commit automático cada vez que se guarda un archivo en el workspace",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "*"
+    ]
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "git add -A && git commit -m \"auto commit: cambios guardados\""
+  }
+}

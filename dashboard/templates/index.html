@@ -28,6 +28,7 @@
   .badge-posible    { background: #1c2a3a; color: #79c0ff; }
   .badge-evaluar    { background: #2d1f00; color: #e3b341; }
   .badge-ta-reviewer { background: #1a2a3a; color: #a5d6ff; }
+  .badge-bloqueado   { background: #2d2d2d; color: #8b949e; }
   .reasons  { color: #f85149; font-size: .75rem; margin-top: 4px; }
   .warnings { color: #d29922; font-size: .75rem; margin-top: 2px; }
   .btn-approve { background: #238636; color: #fff; margin-right: 6px; border-radius: 6px; padding: 5px 10px; font-size: .8rem; border: none; cursor: pointer; }
@@ -86,6 +87,16 @@
   <span class="auto-status" id="auto-status">Cargando config...</span>
 </div>
 
+<!-- Blocked authors config -->
+<div class="config-box" style="gap:12px">
+  <span style="font-size:.875rem;font-weight:600;color:#e6edf3">🚫 Autores bloqueados</span>
+  <div id="blocked-authors-list" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <input id="new-author-input" type="text" placeholder="Nombre del autor..." style="background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:5px 10px;font-size:.8rem;width:200px">
+    <button class="btn-primary" onclick="addBlockedAuthor()" style="padding:5px 12px;font-size:.8rem">+ Agregar</button>
+  </div>
+</div>
+
 <div class="tabs">
   <div class="tab active"  onclick="switchTab('activos')">Activos</div>
   <div class="tab" onclick="switchTab('hoy')">Completados hoy</div>
@@ -95,6 +106,7 @@
 
 <div class="toolbar">
   <button class="btn-primary" onclick="reload()">↻ Actualizar</button>
+  <button class="btn-primary" onclick="exportSheets()" id="btn-export" style="background:#1f6feb">📊 Exportar a Sheets</button>
   <div id="range-inputs" style="display:none;gap:8px;align-items:center;display:none">
     <input type="date" id="date-from">
     <span style="color:#8b949e">→</span>
@@ -143,6 +155,7 @@
 let currentTab = 'activos';
 let allPRs = {}; // Almacenar PRs por panel
 const verdictClass = { "aprobable":"badge-aprobable","aprobable con cautela":"badge-cautela","revisar":"badge-revisar","rechazar":"badge-rechazar","resolver conflicto":"badge-conflicto","posible aprobación":"badge-posible","evaluar check":"badge-evaluar","TA Reviewer":"badge-ta-reviewer" };
+let blockedAuthors = [];
 
 function switchTab(tab) {
   currentTab = tab;
@@ -170,6 +183,19 @@ async function loadActivos() {
       const cls = verdictClass[pr.verdict] || "badge-revisar";
       const reasons  = pr.reasons.length  ? `<div class="reasons">✗ ${pr.reasons.join(" · ")}</div>` : "";
       const warnings = pr.warnings.length ? `<div class="warnings">⚠ ${pr.warnings.join(" · ")}</div>` : "";
+
+      if (pr.blocked) {
+        return `<tr style="opacity:.5">
+          <td><a href="${pr.url}" target="_blank">${pr.id}</a></td>
+          <td>${esc(pr.title)}${reasons}${warnings}</td>
+          <td>${esc(pr.createdBy||"—")}</td>
+          <td style="font-size:.75rem">${esc(pr.source)}<br>→ ${esc(pr.target)}</td>
+          <td>${esc(pr.scope)}<br><span style="color:#8b949e;font-size:.75rem">${pr.changedFiles} archivo(s)</span></td>
+          <td><span class="badge badge-bloqueado">🚫 Bloqueado</span></td>
+          <td style="color:#8b949e;font-size:.75rem">Sin acciones</td>
+        </tr>`;
+      }
+
       const canApprove = ["aprobable", "aprobable con cautela", "posible aprobación", "evaluar check"].includes(pr.verdict);
       const approveLabel  = pr.myVote === 'approved'  ? '✓ Aprobado'   : '✓ Aprobar';
       const completeLabel = pr.myVote === 'completed' ? '⚡ Completado' : '⚡ Completar';
@@ -292,10 +318,8 @@ async function vote(prId, action, btn) {
           completeBtn.disabled = false;
         }
       } else {
-        // TA no ha aprobado → notificar en Slack
-        completeBtn.textContent = "⏳ Notificando TA...";
-        const res = await fetch(`/api/pr/${prId}/request-ta-approval`, { method: "POST" }).then(r => r.json());
-        completeBtn.textContent = res.ok ? "📨 TA notificado" : "⚠ " + res.error;
+        // TA no ha aprobado → /approve notificará en background
+        completeBtn.textContent = "📨 TA notificado";
       }
     }
   } catch(e) {
@@ -434,11 +458,77 @@ function updateAutoStatus() {
   }
 }
 
+// ── Blocked authors ─────────────────────────────────────────────────────────
+async function loadBlockedAuthors() {
+  try {
+    blockedAuthors = await fetch("/api/config/blocked-authors").then(r => r.json());
+    renderBlockedAuthors();
+  } catch(e) {}
+}
+
+function renderBlockedAuthors() {
+  const container = document.getElementById("blocked-authors-list");
+  container.innerHTML = blockedAuthors.length
+    ? blockedAuthors.map(a => `
+        <span style="background:#21262d;border:1px solid #30363d;border-radius:12px;padding:3px 10px;font-size:.8rem;display:flex;align-items:center;gap:6px">
+          ${esc(a)}
+          <span onclick="removeBlockedAuthor('${esc(a)}')" style="cursor:pointer;color:#f85149;font-weight:bold">×</span>
+        </span>`).join("")
+    : '<span style="color:#8b949e;font-size:.8rem">Ninguno</span>';
+}
+
+async function addBlockedAuthor() {
+  const input = document.getElementById("new-author-input");
+  const name = input.value.trim();
+  if (!name || blockedAuthors.includes(name)) { input.value = ""; return; }
+  blockedAuthors.push(name);
+  await saveBlockedAuthors();
+  input.value = "";
+}
+
+async function removeBlockedAuthor(name) {
+  blockedAuthors = blockedAuthors.filter(a => a !== name);
+  await saveBlockedAuthors();
+}
+
+async function saveBlockedAuthors() {
+  await fetch("/api/config/blocked-authors", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ authors: blockedAuthors })
+  });
+  renderBlockedAuthors();
+}
+
+// ── Google Sheets export ────────────────────────────────────────────────────
+async function exportSheets() {
+  const btn = document.getElementById("btn-export");
+  const from = document.getElementById("date-from").value;
+  const to   = document.getElementById("date-to").value;
+  btn.disabled = true;
+  btn.textContent = "⏳ Exportando...";
+  try {
+    const res = await fetch("/api/prs/export-sheets", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ from, to }),
+    }).then(r => r.json());
+    btn.textContent = res.ok ? `✅ ${res.rows} fila(s) exportadas` : "❌ Error";
+    if (!res.ok) alert("Error: " + res.error);
+  } catch(e) {
+    btn.textContent = "❌ Error";
+    alert("Error: " + e.message);
+  } finally {
+    setTimeout(() => { btn.disabled = false; btn.textContent = "📊 Exportar a Sheets"; }, 3000);
+  }
+}
+
 // Init
 const today = new Date().toISOString().slice(0,10);
 document.getElementById("date-from").value = today;
 document.getElementById("date-to").value = today;
 loadAutoApproveConfig();
+loadBlockedAuthors();
 loadActivos();
 setInterval(reload, 60000);
 </script>
