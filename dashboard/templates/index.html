@@ -776,17 +776,32 @@ async function vote(prId, action, btn) {
 
 const deployLabels = { inProgress:"⏳ In progress", succeeded:"✅ Desplegado", failed:"❌ Deploy fallido", unknown:"—" };
 const deployClass  = { inProgress:"badge-deploy-progress", succeeded:"badge-deploy-ok", failed:"badge-deploy-fail", unknown:"badge-deploy-unknown" };
+// Cache con TTL: { status, ts }
 const deployCache  = {};
+const DEPLOY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+const DEPLOY_MAX_POLLS = 60; // máx 1 hora (60 × 60s)
+const _deployPollCount = {};
 
 async function pollDeploy(prId, closedDate, target, mergeCommit) {
   const el = document.getElementById(`deploy-${prId}`);
   if (!el) return;
-  if (deployCache[prId] && deployCache[prId] !== "inProgress") {
-    const s = deployCache[prId];
-    el.className = `badge ${deployClass[s]}`;
-    el.textContent = deployLabels[s];
+
+  // Verificar cache con TTL
+  const cached = deployCache[prId];
+  if (cached && cached.status !== "inProgress" && (Date.now() - cached.ts) < DEPLOY_CACHE_TTL_MS) {
+    el.className = `badge ${deployClass[cached.status]}`;
+    el.textContent = deployLabels[cached.status];
     return;
   }
+
+  // Verificar límite de polls
+  _deployPollCount[prId] = (_deployPollCount[prId] || 0);
+  if (_deployPollCount[prId] >= DEPLOY_MAX_POLLS) {
+    el.className = `badge ${deployClass.unknown}`;
+    el.textContent = "⏱ Timeout";
+    return;
+  }
+
   const params = new URLSearchParams();
   if (mergeCommit) params.set("mergeCommit", mergeCommit);
   if (closedDate)  params.set("closedDate", closedDate);
@@ -794,10 +809,11 @@ async function pollDeploy(prId, closedDate, target, mergeCommit) {
   const data = await fetch(`/api/pr/${prId}/deploy-status?${params}`).then(r => r.json()).catch(() => null);
   if (!data) return;
   const s = data.status;
-  deployCache[prId] = s;
+  deployCache[prId] = { status: s, ts: Date.now() };
   el.className = `badge ${deployClass[s] || deployClass.unknown}`;
   el.textContent = deployLabels[s] || "—";
   if (s === "inProgress") {
+    _deployPollCount[prId]++;
     setTimeout(() => pollDeploy(prId, closedDate, target, mergeCommit), 60000);
   } else if (s === "succeeded" || s === "failed") {
     fetch(`/api/pr/${prId}/notify-deploy`, {
