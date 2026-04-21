@@ -496,6 +496,45 @@
   <!-- Main -->
   <main class="main">
 
+    <!-- KPI Cards -->
+    <div class="kpi-grid" id="kpi-grid">
+      <div class="kpi-card kpi-skeleton" style="--kpi-color:#3b82f6">
+        <div class="kpi-label">PRs Activos</div>
+        <div class="kpi-value" id="kpi-active">—</div>
+        <div class="kpi-sub" id="kpi-active-sub">cargando...</div>
+      </div>
+      <div class="kpi-card kpi-skeleton" style="--kpi-color:#22c55e">
+        <div class="kpi-label">Completados Hoy</div>
+        <div class="kpi-value" id="kpi-completed">—</div>
+        <div class="kpi-sub" id="kpi-completed-sub">cargando...</div>
+      </div>
+      <div class="kpi-card kpi-skeleton" style="--kpi-color:#a855f7">
+        <div class="kpi-label">Pendientes Aprobación</div>
+        <div class="kpi-value" id="kpi-pending">—</div>
+        <div class="kpi-sub" id="kpi-pending-sub">cargando...</div>
+      </div>
+      <div class="kpi-card kpi-skeleton" style="--kpi-color:#06b6d4">
+        <div class="kpi-label">Listos para Completar</div>
+        <div class="kpi-value" id="kpi-ready">—</div>
+        <div class="kpi-sub" id="kpi-ready-sub">cargando...</div>
+      </div>
+      <div class="kpi-card kpi-skeleton" style="--kpi-color:#eab308">
+        <div class="kpi-label">Tiempo Prom. Revisión</div>
+        <div class="kpi-value" id="kpi-avgtime">—</div>
+        <div class="kpi-sub" id="kpi-avgtime-sub">cargando...</div>
+      </div>
+      <div class="kpi-card kpi-skeleton" style="--kpi-color:#ec4899">
+        <div class="kpi-label">Con Conflictos</div>
+        <div class="kpi-value" id="kpi-conflicts">—</div>
+        <div class="kpi-sub" id="kpi-conflicts-sub">cargando...</div>
+      </div>
+      <div class="kpi-card kpi-skeleton" style="--kpi-color:#f97316">
+        <div class="kpi-label">Tasa Auto-aprobación</div>
+        <div class="kpi-value" id="kpi-autorate">—</div>
+        <div class="kpi-sub" id="kpi-autorate-sub">cargando...</div>
+      </div>
+    </div>
+
     <!-- Tabs -->
     <div class="tabs">
       <div class="tab active" onclick="switchTab('activos')">⚡ Activos</div>
