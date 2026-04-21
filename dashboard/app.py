@@ -192,20 +192,32 @@ AUTO_APPROVE_CONFIG_PATH = Path(__file__).parent.parent / "memoria" / "auto_appr
 BLOCKED_AUTHORS_PATH = Path(__file__).parent.parent / "memoria" / "blocked_authors.json"
 
 def load_auto_approve_config():
-    if AUTO_APPROVE_CONFIG_PATH.exists():
-        return json.loads(AUTO_APPROVE_CONFIG_PATH.read_text())
+    try:
+        if AUTO_APPROVE_CONFIG_PATH.exists():
+            return json.loads(AUTO_APPROVE_CONFIG_PATH.read_text())
+    except Exception as e:
+        logger.error("[config] Error leyendo auto_approve_config: %s", e)
     return {"enabled": False, "branches": []}
 
 def save_auto_approve_config(cfg):
-    AUTO_APPROVE_CONFIG_PATH.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+    try:
+        AUTO_APPROVE_CONFIG_PATH.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+    except Exception as e:
+        logger.error("[config] Error guardando auto_approve_config: %s", e)
 
 def load_blocked_authors():
-    if BLOCKED_AUTHORS_PATH.exists():
-        return json.loads(BLOCKED_AUTHORS_PATH.read_text())
+    try:
+        if BLOCKED_AUTHORS_PATH.exists():
+            return json.loads(BLOCKED_AUTHORS_PATH.read_text())
+    except Exception as e:
+        logger.error("[config] Error leyendo blocked_authors: %s", e)
     return ["Glenda Paiva"]
 
 def save_blocked_authors(authors):
-    BLOCKED_AUTHORS_PATH.write_text(json.dumps(authors, indent=2, ensure_ascii=False))
+    try:
+        BLOCKED_AUTHORS_PATH.write_text(json.dumps(authors, indent=2, ensure_ascii=False))
+    except Exception as e:
+        logger.error("[config] Error guardando blocked_authors: %s", e)
 
 TA_SLACK_IDS = {
     "gustavo alonso muciño": "U06JUHG1G9Y",
