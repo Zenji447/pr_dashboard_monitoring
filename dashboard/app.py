@@ -699,44 +699,59 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/health")
+def health():
+    return jsonify({"ok": True, "status": "healthy", "ts": datetime.now(timezone.utc).isoformat()})
+
+
 @app.route("/api/prs")
 def api_prs():
     try:
         return jsonify({"ok": True, "prs": get_prs()})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[api/prs] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error consultando PRs activos"}), 500
 
 
 @app.route("/api/prs/completed")
 def api_prs_completed():
     try:
-        from datetime import datetime, timezone
         today = datetime.now(timezone.utc).date().isoformat()
         return jsonify({"ok": True, "prs": prs_completed_by_date(today, today)})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[api/prs/completed] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error consultando PRs completados"}), 500
 
 
 @app.route("/api/prs/completed/yesterday")
 def api_prs_yesterday():
     try:
-        from datetime import datetime, timezone, timedelta
+        from datetime import timedelta
         yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
         return jsonify({"ok": True, "prs": prs_completed_by_date(yesterday, yesterday)})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[api/prs/yesterday] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error consultando PRs de ayer"}), 500
 
 
 @app.route("/api/prs/completed/range")
 def api_prs_range():
     try:
-        date_from = request.args.get("from", "")
-        date_to   = request.args.get("to", "")
+        date_from = request.args.get("from", "").strip()
+        date_to   = request.args.get("to", "").strip()
         if not date_from or not date_to:
             return jsonify({"ok": False, "error": "Parámetros 'from' y 'to' requeridos (YYYY-MM-DD)"}), 400
+        try:
+            _validate_date(date_from)
+            _validate_date(date_to)
+        except ValueError as ve:
+            return jsonify({"ok": False, "error": str(ve)}), 400
+        if date_from > date_to:
+            return jsonify({"ok": False, "error": "'from' no puede ser posterior a 'to'"}), 400
         return jsonify({"ok": True, "prs": prs_completed_by_date(date_from, date_to)})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[api/prs/range] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error consultando rango de PRs"}), 500
 
 
 @app.route("/api/pr/<int:pr_id>/approve", methods=["POST"])
