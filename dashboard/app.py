@@ -203,16 +203,65 @@ TA_SLACK_IDS = {
 }
 
 SLACK_TOKEN = None
+API_KEY = None  # Clave para proteger endpoints de acción
 
 def _load_env():
-    global SLACK_TOKEN
+    global SLACK_TOKEN, API_KEY
     env_path = Path(__file__).parent.parent / ".env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
+            line = line.strip()
             if line.startswith("SLACK_TOKEN="):
                 SLACK_TOKEN = line.split("=", 1)[1].strip()
+            elif line.startswith("DASHBOARD_API_KEY="):
+                API_KEY = line.split("=", 1)[1].strip()
+    # También aceptar desde variables de entorno del sistema
+    if not SLACK_TOKEN:
+        SLACK_TOKEN = os.environ.get("SLACK_TOKEN")
+    if not API_KEY:
+        API_KEY = os.environ.get("DASHBOARD_API_KEY")
 
 _load_env()
+
+# ── Decorador de autenticación por API key ────────────────────────────────────
+def require_api_key(f):
+    """Protege endpoints de acción con una API key simple.
+    Si DASHBOARD_API_KEY no está configurada, permite acceso (modo desarrollo).
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if API_KEY:
+            key = request.headers.get("X-API-Key") or request.args.get("api_key")
+            if key != API_KEY:
+                logger.warning("Intento de acceso sin API key válida a %s", request.path)
+                return jsonify({"ok": False, "error": "No autorizado"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+# ── Validación de fechas ──────────────────────────────────────────────────────
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+def _validate_date(s):
+    """Valida que s sea una fecha YYYY-MM-DD válida. Lanza ValueError si no."""
+    if not s or not _DATE_RE.match(s):
+        raise ValueError(f"Fecha inválida: {s!r}. Formato esperado: YYYY-MM-DD")
+    datetime.strptime(s, "%Y-%m-%d")  # verifica que sea una fecha real
+    return s
+
+# ── Retry con backoff exponencial ─────────────────────────────────────────────
+def _retry(fn, retries=3, base_delay=2, label=""):
+    """Ejecuta fn con reintentos y backoff exponencial."""
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            if attempt == retries - 1:
+                logger.error("[retry:%s] Falló tras %d intentos: %s", label, retries, e)
+                raise
+            delay = base_delay * (2 ** attempt)
+            logger.warning("[retry:%s] Intento %d/%d falló (%s). Reintentando en %ds...",
+                           label, attempt + 1, retries, e, delay)
+            time.sleep(delay)
 
 app = Flask(__name__)
 
