@@ -695,7 +695,8 @@ def _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, aut
                         deploy_notified.append(pr_id)
                         save_state(state)
                     from datetime import datetime, timezone
-                    _sheet_update_deploy(pr_id, status, datetime.now(timezone.utc).isoformat())
+                    final_date = deploy_date_bg or datetime.now(timezone.utc).isoformat()
+                    _sheet_update_deploy(pr_id, status, final_date)
                     return
             except Exception:
                 pass
