@@ -297,7 +297,9 @@ def get_pr_ta_reviewers(pr_id, only_pending=True):
 
 
 def get_deploy_status(pr_id, merge_commit=None, closed_date=None, target_branch=None):
-    """Busca el release asociado al PR via commit de merge o branch del PR."""
+    """Busca el release asociado al PR via commit de merge o branch del PR.
+    Retorna tupla (status, deploy_date) donde deploy_date es ISO string o ''.
+    """
     try:
         token = get_token()
         org_name = ORG_URL.rstrip("/").split("/")[-1]
@@ -317,9 +319,9 @@ def get_deploy_status(pr_id, merge_commit=None, closed_date=None, target_branch=
                 # Coincidencia exacta por commit de merge (PR completado)
                 if merge_commit and commit and commit == merge_commit:
                     return _release_status(detail)
-        return "unknown"
+        return "unknown", ""
     except Exception:
-        return "unknown"
+        return "unknown", ""
 
 
 def _api_azure(url, token):
