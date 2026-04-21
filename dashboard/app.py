@@ -823,16 +823,44 @@ def export_sheets():
         prs = prs_completed_by_date(date_from, date_to)
         state = load_state()
         auto_approved_ids = set(state.get("auto_approved", []))
+        blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
+        token = get_token()
 
         rows = [SHEET_HEADERS]
         for pr in prs:
+            pr_id = pr["id"]
+
+            # Marcar bloqueado
+            pr["blocked"] = (pr.get("createdBy") or "").lower().strip() in blocked_authors
+
+            # Obtener policy status para PRs completados
+            try:
+                pr["policyStatus"] = get_pr_policy_status(pr_id, token)
+            except Exception:
+                pr["policyStatus"] = ""
+
+            # Obtener fecha de aprobación: buscar el reviewer con vote=10 y fecha más temprana
+            approval_date = ""
+            for reviewer in pr.get("reviewers", []):
+                if reviewer.get("vote", 0) == 10:
+                    # Azure no devuelve la fecha del voto en el listado,
+                    # usamos la fecha de cierre como aproximación si no hay otra fuente
+                    pass
+            # Intentar obtener fecha real de aprobación via threads
+            approval_date = _get_approval_date(pr_id, token)
+            # Fallback: si no encontramos fecha de aprobación, usar closedDate
+            if not approval_date:
+                approval_date = pr.get("closedDate", "")
+
             deploy_st = get_deploy_status(
-                pr["id"], pr.get("mergeCommit"), pr.get("closedDate"), pr.get("target")
+                pr_id, pr.get("mergeCommit"), pr.get("closedDate"), pr.get("target")
             )
+
             rows.append(_pr_to_row(
                 pr,
                 deploy_status=deploy_st,
-                auto_approved=pr["id"] in auto_approved_ids,
+                approval_date=approval_date,
+                auto_approved=pr_id in auto_approved_ids,
             ))
 
         svc = _sheets_service()
