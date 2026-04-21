@@ -682,7 +682,7 @@ def _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, aut
         for _ in range(60):  # máx 60 intentos = ~1 hora
             time.sleep(60)
             try:
-                status = get_deploy_status(pr_id, merge_commit, closed_date, target_branch)
+                status, deploy_date_bg = get_deploy_status(pr_id, merge_commit, closed_date, target_branch)
                 if status in ("succeeded", "failed"):
                     state = load_state()
                     deploy_notified = state.setdefault("deploy_notified", [])
