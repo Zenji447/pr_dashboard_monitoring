@@ -828,6 +828,64 @@ def set_blocked_authors():
     return jsonify({"ok": True, "authors": authors})
 
 
+@app.route("/api/stats")
+def api_stats():
+    try:
+        from datetime import datetime, timezone, timedelta
+        today = datetime.now(timezone.utc).date().isoformat()
+        yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+
+        # PRs activos
+        active_prs = get_prs()
+        active_count = len(active_prs)
+        conflicts_count = sum(1 for p in active_prs if p.get("hasConflicts"))
+        auto_approved_active = sum(1 for p in active_prs if p.get("myVote") == "approved")
+
+        # PRs completados hoy
+        completed_today = prs_completed_by_date(today, today)
+        completed_count = len(completed_today)
+
+        # PRs completados ayer (para comparar tendencia)
+        completed_yesterday = prs_completed_by_date(yesterday, yesterday)
+        yesterday_count = len(completed_yesterday)
+
+        # Tiempo promedio de revisión (de los completados hoy, usando creationDate → closedDate)
+        review_times = []
+        for pr in completed_today:
+            t = _minutes_between(pr.get("creationDate", ""), pr.get("closedDate", ""))
+            if isinstance(t, (int, float)) and t > 0:
+                review_times.append(t)
+        avg_review_min = round(sum(review_times) / len(review_times)) if review_times else 0
+
+        # Tasa de auto-aprobación (del estado guardado)
+        state = load_state()
+        auto_approved_ids = set(state.get("auto_approved", []))
+        auto_rate = 0
+        if completed_count > 0:
+            auto_in_today = sum(1 for pr in completed_today if pr["id"] in auto_approved_ids)
+            auto_rate = round(auto_in_today / completed_count * 100)
+
+        # Tendencia: diferencia de completados hoy vs ayer
+        trend = completed_count - yesterday_count
+
+        return jsonify({
+            "ok": True,
+            "stats": {
+                "active": active_count,
+                "completed_today": completed_count,
+                "completed_yesterday": yesterday_count,
+                "trend": trend,
+                "conflicts": conflicts_count,
+                "avg_review_min": avg_review_min,
+                "auto_rate": auto_rate,
+                "pending_approval": sum(1 for p in active_prs if p.get("myVote") != "approved"),
+                "ready_to_complete": sum(1 for p in active_prs if p.get("canComplete") and p.get("myVote") == "approved"),
+            }
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/prs/export-sheets", methods=["POST"])
 def export_sheets():
     try:
