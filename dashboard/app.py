@@ -501,6 +501,33 @@ def get_prs():
     return sorted(reports, key=lambda x: (priority.get(x["verdict"], 9), x["id"]))
 
 
+def _get_approval_date(pr_id, token):
+    """Obtiene la fecha en que el primer reviewer aprobó el PR via Azure Threads API."""
+    try:
+        url = (
+            f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}"
+            f"/pullRequests/{pr_id}/threads?api-version=7.1"
+        )
+        req = Request(url, headers={"Authorization": f"Bearer {token}"})
+        with urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        # Buscar el primer voto de aprobación (vote=10) en los threads
+        earliest = None
+        for thread in data.get("value", []):
+            for comment in thread.get("comments", []):
+                props = comment.get("usedCommentType", "")
+                # Los votos de aprobación aparecen como tipo "system"
+                if comment.get("commentType") == "system":
+                    content = comment.get("content", "")
+                    if "approved" in content.lower() or "aprobó" in content.lower():
+                        pub = comment.get("publishedDate", "")
+                        if pub and (earliest is None or pub < earliest):
+                            earliest = pub
+        return earliest or ""
+    except Exception:
+        return ""
+
+
 def prs_completed_by_date(date_from, date_to):
     prs = json.loads(run([
         "az", "repos", "pr", "list", "--status", "completed",
@@ -513,8 +540,13 @@ def prs_completed_by_date(date_from, date_to):
             "createdBy": p.get("createdBy", {}).get("displayName", ""),
             "target": normalize_ref(p.get("targetRefName", "")),
             "closedDate": p.get("closedDate", ""),
+            "creationDate": p.get("creationDate", ""),
             "mergeCommit": p.get("lastMergeCommit", {}).get("commitId", ""),
             "url": f"{ORG_URL}/{PROJECT}/_git/{REPOSITORY}/pullrequest/{p['pullRequestId']}",
+            "hasConflicts": p.get("mergeStatus") == "conflicts",
+            "policyStatus": "",   # se enriquece en export si se necesita
+            "reviewers": p.get("reviewers", []),
+            "blocked": False,
         }
         for p in prs if date_from <= p.get("closedDate", "")[:10] <= date_to
     ]
