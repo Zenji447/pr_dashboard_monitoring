@@ -171,8 +171,16 @@ def _sheet_update_deploy(pr_id, deploy_status, deploy_date=""):
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from check_salesforce_prs import (
     classify, fetch_changes, get_token, normalize_ref,
-    load_state, save_state, get_my_vote
+    load_state as _load_state_raw, save_state as _save_state_raw, get_my_vote
 )
+
+def load_state():
+    with _state_lock:
+        return _load_state_raw()
+
+def save_state(state):
+    with _state_lock:
+        _save_state_raw(state)
 
 ORG_URL = "https://dev.azure.com/OrgClaroColombia"
 PROJECT = "SalesForce"
