@@ -106,20 +106,25 @@ def _sheet_append_pr(pr_data, auto_approved=False, approval_date=""):
     """Agrega una fila al Sheet cuando un PR se completa. No bloquea."""
     def _run():
         try:
-            svc = _sheets_service()
-            sheet = svc.spreadsheets()
-            _sheet_ensure_headers(sheet)
-            # Si ya existe la fila (reintento), no duplicar
-            if _sheet_find_row(sheet, pr_data.get("pullRequestId") or pr_data.get("id")):
-                return
-            row = _pr_to_row(pr_data, auto_approved=auto_approved, approval_date=approval_date)
-            sheet.values().append(
-                spreadsheetId=SHEET_ID, range="Hoja 1!A1",
-                valueInputOption="RAW", insertDataOption="INSERT_ROWS",
-                body={"values": [row]},
-            ).execute()
+            def _do():
+                svc = _sheets_service()
+                sheet = svc.spreadsheets()
+                _sheet_ensure_headers(sheet)
+                pr_id = pr_data.get("pullRequestId") or pr_data.get("id")
+                if _sheet_find_row(sheet, pr_id):
+                    logger.info("[sheets] PR %s ya existe en la hoja, omitiendo", pr_id)
+                    return
+                row = _pr_to_row(pr_data, auto_approved=auto_approved, approval_date=approval_date)
+                sheet.values().append(
+                    spreadsheetId=SHEET_ID, range="Hoja 1!A1",
+                    valueInputOption="RAW", insertDataOption="INSERT_ROWS",
+                    body={"values": [row]},
+                ).execute()
+                logger.info("[sheets] PR %s registrado correctamente", pr_id)
+            _retry(_do, retries=3, label="sheets.append")
         except Exception as e:
-            print(f"[sheets] append error: {e}")
+            logger.error("[sheets] append error definitivo para PR %s: %s",
+                         pr_data.get("pullRequestId") or pr_data.get("id"), e)
     threading.Thread(target=_run, daemon=True).start()
 
 def _sheet_update_deploy(pr_id, deploy_status, deploy_date=""):
