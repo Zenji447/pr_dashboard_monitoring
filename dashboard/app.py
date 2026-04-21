@@ -755,6 +755,7 @@ def api_prs_range():
 
 
 @app.route("/api/pr/<int:pr_id>/approve", methods=["POST"])
+@require_api_key
 def approve(pr_id):
     try:
         result = subprocess.run([
@@ -762,55 +763,68 @@ def approve(pr_id):
             "--vote", "approve", "--org", ORG_URL, "-o", "json"
         ], capture_output=True, text=True)
         if result.returncode != 0:
-            return jsonify({"ok": False, "error": result.stderr or result.stdout}), 500
+            logger.error("[approve] PR %s falló: %s", pr_id, result.stderr)
+            return jsonify({"ok": False, "error": "Error al aprobar el PR"}), 500
         state = load_state()
         approved_notified = state.setdefault("approved_notified", [])
         if pr_id not in approved_notified:
             notify_pr_slack(pr_id, "approve")
             approved_notified.append(pr_id)
             save_state(state)
-        # Notificar al TA si aún no se ha hecho (en background para no bloquear)
         def _notify_ta():
-            state = load_state()
-            ta_notified = state.setdefault("ta_notified", [])
-            if pr_id not in ta_notified:
-                thread_ts = wait_for_pr_thread(pr_id, interval=5)  # polling cada 5 seg, máx ~2 min
-                mentions = get_pr_ta_reviewers(pr_id)
-                text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
-                slack_api("chat.postMessage", {
-                    "channel": SLACK_PR_CHANNEL,
-                    "thread_ts": thread_ts,
-                    "text": text
-                })
-                ta_notified.append(pr_id)
-                save_state(state)
-        
+            try:
+                state2 = load_state()
+                ta_notified = state2.setdefault("ta_notified", [])
+                if pr_id not in ta_notified:
+                    thread_ts = wait_for_pr_thread(pr_id, interval=5)
+                    if not thread_ts:
+                        logger.warning("[approve] No se encontró hilo para PR %s al notificar TA", pr_id)
+                        return
+                    mentions = get_pr_ta_reviewers(pr_id)
+                    text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
+                    slack_api("chat.postMessage", {
+                        "channel": SLACK_PR_CHANNEL,
+                        "thread_ts": thread_ts,
+                        "text": text
+                    })
+                    ta_notified.append(pr_id)
+                    save_state(state2)
+            except Exception as e:
+                logger.error("[approve] Error notificando TA para PR %s: %s", pr_id, e)
         threading.Thread(target=_notify_ta, daemon=True).start()
-        ta_sent = True  # Siempre retorna true porque se notificará en background
-        return jsonify({"ok": True, "ta_notified": ta_sent})
+        logger.info("[approve] PR %s aprobado", pr_id)
+        return jsonify({"ok": True, "ta_notified": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[approve] PR %s excepción: %s", pr_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error interno al aprobar"}), 500
 
 
 @app.route("/api/pr/<int:pr_id>/reject", methods=["POST"])
+@require_api_key
 def reject(pr_id):
     try:
         data = request.get_json(silent=True) or {}
-        comment = data.get("comment", "PR rechazado por revisión automática.")
+        comment = str(data.get("comment", "PR rechazado por revisión automática."))
+        # Validar longitud del comentario
+        if len(comment) > 2000:
+            return jsonify({"ok": False, "error": "Comentario demasiado largo (máx 2000 caracteres)"}), 400
         result = subprocess.run([
             "az", "repos", "pr", "set-vote", "--id", str(pr_id),
             "--vote", "reject", "--org", ORG_URL, "-o", "json"
         ], capture_output=True, text=True)
         if result.returncode != 0:
-            return jsonify({"ok": False, "error": result.stderr or result.stdout}), 500
+            logger.error("[reject] PR %s falló: %s", pr_id, result.stderr)
+            return jsonify({"ok": False, "error": "Error al rechazar el PR"}), 500
         subprocess.run([
             "az", "repos", "pr", "comment", "add", "--id", str(pr_id),
             "--comment", comment, "--org", ORG_URL, "--project", PROJECT, "-o", "none"
         ])
         notify_pr_slack(pr_id, "reject", comment)
+        logger.info("[reject] PR %s rechazado", pr_id)
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[reject] PR %s excepción: %s", pr_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error interno al rechazar"}), 500
 
 
 def _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, author=None):
