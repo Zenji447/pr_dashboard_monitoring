@@ -1,17 +1,34 @@
 #!/usr/bin/env python3
 import json
+import logging
+import os
+import re
 import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, abort
 
 # Google Sheets
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+
+# ── Logging estructurado ──────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("pr_dashboard")
+
+# ── Lock global para estado compartido ───────────────────────────────────────
+_state_lock = threading.Lock()
+_auto_approve_lock = threading.Lock()
 
 SHEET_ID = "1jsYHmGm-2eN5986bgN5jlPO86guNfWmnf980H4TsdO0"
 CREDS_PATH = Path(__file__).parent.parent / "google_credentials.json"
