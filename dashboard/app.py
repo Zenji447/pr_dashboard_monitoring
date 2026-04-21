@@ -1031,25 +1031,20 @@ def set_blocked_authors():
 @app.route("/api/stats")
 def api_stats():
     try:
-        from datetime import datetime, timezone, timedelta
+        from datetime import timedelta
         today = datetime.now(timezone.utc).date().isoformat()
         yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
 
-        # PRs activos
         active_prs = get_prs()
         active_count = len(active_prs)
         conflicts_count = sum(1 for p in active_prs if p.get("hasConflicts"))
-        auto_approved_active = sum(1 for p in active_prs if p.get("myVote") == "approved")
 
-        # PRs completados hoy
         completed_today = prs_completed_by_date(today, today)
         completed_count = len(completed_today)
 
-        # PRs completados ayer (para comparar tendencia)
         completed_yesterday = prs_completed_by_date(yesterday, yesterday)
         yesterday_count = len(completed_yesterday)
 
-        # Tiempo promedio de revisión (de los completados hoy, usando creationDate → closedDate)
         review_times = []
         for pr in completed_today:
             t = _minutes_between(pr.get("creationDate", ""), pr.get("closedDate", ""))
@@ -1057,7 +1052,6 @@ def api_stats():
                 review_times.append(t)
         avg_review_min = round(sum(review_times) / len(review_times)) if review_times else 0
 
-        # Tasa de auto-aprobación (del estado guardado)
         state = load_state()
         auto_approved_ids = set(state.get("auto_approved", []))
         auto_rate = 0
@@ -1065,7 +1059,6 @@ def api_stats():
             auto_in_today = sum(1 for pr in completed_today if pr["id"] in auto_approved_ids)
             auto_rate = round(auto_in_today / completed_count * 100)
 
-        # Tendencia: diferencia de completados hoy vs ayer
         trend = completed_count - yesterday_count
 
         return jsonify({
@@ -1083,19 +1076,26 @@ def api_stats():
             }
         })
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[api/stats] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error calculando estadísticas"}), 500
 
 
 @app.route("/api/prs/export-sheets", methods=["POST"])
+@require_api_key
 def export_sheets():
     try:
         data = request.get_json(silent=True) or {}
-        date_from = data.get("from", "")
-        date_to   = data.get("to", "")
+        date_from = str(data.get("from", "")).strip()
+        date_to   = str(data.get("to", "")).strip()
         if not date_from or not date_to:
-            from datetime import datetime, timezone
             today = datetime.now(timezone.utc).date().isoformat()
             date_from = date_to = today
+        else:
+            try:
+                _validate_date(date_from)
+                _validate_date(date_to)
+            except ValueError as ve:
+                return jsonify({"ok": False, "error": str(ve)}), 400
 
         prs = prs_completed_by_date(date_from, date_to)
         state = load_state()
@@ -1106,26 +1106,13 @@ def export_sheets():
         rows = [SHEET_HEADERS]
         for pr in prs:
             pr_id = pr["id"]
-
-            # Marcar bloqueado
             pr["blocked"] = (pr.get("createdBy") or "").lower().strip() in blocked_authors
-
-            # Obtener policy status para PRs completados
             try:
                 pr["policyStatus"] = get_pr_policy_status(pr_id, token)
             except Exception:
                 pr["policyStatus"] = ""
 
-            # Obtener fecha de aprobación: buscar el reviewer con vote=10 y fecha más temprana
-            approval_date = ""
-            for reviewer in pr.get("reviewers", []):
-                if reviewer.get("vote", 0) == 10:
-                    # Azure no devuelve la fecha del voto en el listado,
-                    # usamos la fecha de cierre como aproximación si no hay otra fuente
-                    pass
-            # Intentar obtener fecha real de aprobación via threads
             approval_date = _get_approval_date(pr_id, token)
-            # Fallback: si no encontramos fecha de aprobación, usar closedDate
             if not approval_date:
                 approval_date = pr.get("closedDate", "")
 
@@ -1141,21 +1128,23 @@ def export_sheets():
                 auto_approved=pr_id in auto_approved_ids,
             ))
 
-        svc = _sheets_service()
-        sheet = svc.spreadsheets()
+        def _do_export():
+            svc = _sheets_service()
+            sheet = svc.spreadsheets()
+            sheet.values().clear(spreadsheetId=SHEET_ID, range="Hoja 1").execute()
+            sheet.values().update(
+                spreadsheetId=SHEET_ID,
+                range="Hoja 1!A1",
+                valueInputOption="RAW",
+                body={"values": rows},
+            ).execute()
+        _retry(_do_export, retries=3, label="sheets.export")
 
-        # Limpiar hoja y escribir desde A1
-        sheet.values().clear(spreadsheetId=SHEET_ID, range="Hoja 1").execute()
-        sheet.values().update(
-            spreadsheetId=SHEET_ID,
-            range="Hoja 1!A1",
-            valueInputOption="RAW",
-            body={"values": rows},
-        ).execute()
-
+        logger.info("[export-sheets] %d filas exportadas (%s → %s)", len(rows) - 1, date_from, date_to)
         return jsonify({"ok": True, "rows": len(rows) - 1})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error("[export-sheets] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error exportando a Sheets"}), 500
 
 
 if __name__ == "__main__":
