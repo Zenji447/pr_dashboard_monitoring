@@ -322,12 +322,17 @@ def find_pr_thread(pr_id, save_if_found=False):
     return None
 
 
-def wait_for_pr_thread(pr_id, interval=15):
-    while True:
+def wait_for_pr_thread(pr_id, interval=15, max_wait=600):
+    """Espera hasta max_wait segundos a que aparezca el hilo del PR en Slack."""
+    elapsed = 0
+    while elapsed < max_wait:
         ts = find_pr_thread(pr_id, save_if_found=True)
         if ts:
             return ts
         time.sleep(interval)
+        elapsed += interval
+    logger.warning("[slack] No se encontró hilo para PR %s tras %ds", pr_id, max_wait)
+    return None
 
 
 def notify_pr_slack(pr_id, action, detail=None):
