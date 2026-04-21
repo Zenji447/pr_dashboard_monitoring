@@ -774,7 +774,8 @@ def deploy_status(pr_id):
     merge_commit  = request.args.get("mergeCommit", "")
     closed_date   = request.args.get("closedDate", "")
     target_branch = request.args.get("target", "")
-    return jsonify({"ok": True, "status": get_deploy_status(pr_id, merge_commit, closed_date, target_branch)})
+    status, _ = get_deploy_status(pr_id, merge_commit, closed_date, target_branch)
+    return jsonify({"ok": True, "status": status})
 
 
 @app.route("/api/pr/<int:pr_id>/request-ta-approval", methods=["POST"])
