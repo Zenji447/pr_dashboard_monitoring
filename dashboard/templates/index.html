@@ -834,6 +834,64 @@ function setError(msg) {
 }
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
+// ── KPI Stats ────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const data = await fetch("/api/stats").then(r => r.json());
+    if (!data.ok) return;
+    const s = data.stats;
+
+    // PRs Activos
+    document.getElementById("kpi-active").textContent = s.active;
+    document.getElementById("kpi-active-sub").textContent =
+      s.active === 0 ? "Sin PRs en cola" : `${s.active} en revisión`;
+
+    // Completados hoy
+    document.getElementById("kpi-completed").textContent = s.completed_today;
+    const trendVal = s.trend;
+    const trendCls = trendVal > 0 ? "kpi-trend-up" : trendVal < 0 ? "kpi-trend-down" : "kpi-trend-flat";
+    const trendIcon = trendVal > 0 ? "▲" : trendVal < 0 ? "▼" : "—";
+    document.getElementById("kpi-completed-sub").innerHTML =
+      `<span class="${trendCls}">${trendIcon} ${Math.abs(trendVal)} vs ayer</span>`;
+
+    // Pendientes aprobación
+    document.getElementById("kpi-pending").textContent = s.pending_approval;
+    document.getElementById("kpi-pending-sub").textContent =
+      s.pending_approval === 0 ? "Todo aprobado ✓" : "esperando tu voto";
+
+    // Listos para completar
+    document.getElementById("kpi-ready").textContent = s.ready_to_complete;
+    document.getElementById("kpi-ready-sub").textContent =
+      s.ready_to_complete > 0 ? "pueden mergearse ahora" : "ninguno listo aún";
+
+    // Tiempo promedio
+    const mins = s.avg_review_min;
+    let timeStr = "—";
+    let timeSub = "sin datos hoy";
+    if (mins > 0) {
+      if (mins < 60) { timeStr = `${mins}`; timeSub = "minutos promedio"; }
+      else { timeStr = `${(mins/60).toFixed(1)}`; timeSub = "horas promedio"; }
+    }
+    document.getElementById("kpi-avgtime").textContent = timeStr;
+    document.getElementById("kpi-avgtime-sub").textContent = timeSub;
+
+    // Conflictos
+    document.getElementById("kpi-conflicts").textContent = s.conflicts;
+    document.getElementById("kpi-conflicts-sub").textContent =
+      s.conflicts === 0 ? "sin conflictos ✓" : "requieren atención";
+
+    // Tasa auto-aprobación
+    document.getElementById("kpi-autorate").textContent = `${s.auto_rate}%`;
+    document.getElementById("kpi-autorate-sub").textContent =
+      s.auto_rate === 0 ? "ninguno auto-aprobado" : "de los PRs de hoy";
+
+    // Quitar skeleton
+    document.querySelectorAll(".kpi-card").forEach(c => c.classList.remove("kpi-skeleton"));
+  } catch(e) {
+    console.warn("Stats error:", e);
+  }
+}
+
 // ── Auto-approve ─────────────────────────────────────────────────────────────
 const KNOWN_BRANCHES = ["develop", "develop-pr", "releaseproyecto/r6"];
 let autoConfig = { enabled: false, branches: [] };
