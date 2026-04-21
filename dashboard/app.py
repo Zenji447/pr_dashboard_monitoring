@@ -411,9 +411,11 @@ def get_deploy_status(pr_id, merge_commit=None, closed_date=None, target_branch=
 
 
 def _api_azure(url, token):
-    req = Request(url, headers={"Authorization": f"Bearer {token}"})
-    with urlopen(req, timeout=15) as r:
-        return json.loads(r.read())
+    def _call():
+        req = Request(url, headers={"Authorization": f"Bearer {token}"})
+        with urlopen(req, timeout=15) as r:
+            return json.loads(r.read())
+    return _retry(_call, retries=3, label="azure_api")
 
 
 def _release_status(release):
