@@ -1011,7 +1011,9 @@ document.getElementById("date-to").value = today;
 loadAutoApproveConfig();
 loadBlockedAuthors();
 loadActivos();
+loadStats();
 setInterval(reload, 60000);
+setInterval(loadStats, 120000);
 </script>
 </body>
 </html>
