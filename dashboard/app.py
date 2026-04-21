@@ -871,13 +871,14 @@ def export_sheets():
             if not approval_date:
                 approval_date = pr.get("closedDate", "")
 
-            deploy_st = get_deploy_status(
+            deploy_st, deploy_date = get_deploy_status(
                 pr_id, pr.get("mergeCommit"), pr.get("closedDate"), pr.get("target")
             )
 
             rows.append(_pr_to_row(
                 pr,
                 deploy_status=deploy_st,
+                deploy_date=deploy_date,
                 approval_date=approval_date,
                 auto_approved=pr_id in auto_approved_ids,
             ))
