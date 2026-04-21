@@ -336,14 +336,24 @@ def wait_for_pr_thread(pr_id, interval=15, max_wait=600):
 
 
 def notify_pr_slack(pr_id, action, detail=None):
-    labels = {"approve": "✅ Aprobado", "reject": "❌ Rechazado", "complete": "🚀 PR integrado — si no hay conflicto el despliegue estará en curso, te avisamos cuando termine."}
+    labels = {
+        "approve":  "✅ Aprobado",
+        "reject":   "❌ Rechazado",
+        "complete": "🚀 PR integrado — si no hay conflicto el despliegue estará en curso, te avisamos cuando termine.",
+    }
     text = labels.get(action, action)
     if detail:
         text += f"\n> {detail}"
 
     def _send():
-        thread_ts = wait_for_pr_thread(pr_id)
-        slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
+        try:
+            thread_ts = wait_for_pr_thread(pr_id)
+            if not thread_ts:
+                logger.warning("[slack] No se pudo notificar PR %s (acción: %s): hilo no encontrado", pr_id, action)
+                return
+            slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
+        except Exception as e:
+            logger.error("[slack] Error notificando PR %s (acción: %s): %s", pr_id, action, e)
 
     threading.Thread(target=_send, daemon=True).start()
 
