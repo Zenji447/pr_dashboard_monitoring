@@ -593,38 +593,49 @@ def get_prs():
             and not any(".md" in w for w in report.get("warnings", []))
             and report["myVote"] != "approved"
         ):
-            auto_approved = state.setdefault("auto_approved", [])
-            if int(pr_id) not in auto_approved or report["myVote"] != "approved":
-                # Si el voto fue reseteado, remover del set para reintentar
-                if int(pr_id) in auto_approved and report["myVote"] != "approved":
-                    auto_approved.remove(int(pr_id))
-                try:
-                    result = subprocess.run([
-                        "az", "repos", "pr", "set-vote", "--id", pr_id,
-                        "--vote", "approve", "--org", ORG_URL, "-o", "json"
-                    ], capture_output=True, text=True)
-                    if result.returncode == 0:
-                        thread_ts = find_pr_thread(int(pr_id), save_if_found=True)
-                        payload = {"channel": SLACK_PR_CHANNEL, "text": "✅ Aprobado"}
-                        if thread_ts:
-                            payload["thread_ts"] = thread_ts
-                        slack_api("chat.postMessage", payload)
-                        # Notificar al TA para que revise
-                        ta_notified = state.setdefault("ta_notified", [])
-                        if int(pr_id) not in ta_notified:
-                            mentions = get_pr_ta_reviewers(int(pr_id))
-                            text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
-                            slack_api("chat.postMessage", {
-                                "channel": SLACK_PR_CHANNEL,
-                                "thread_ts": thread_ts,
-                                "text": text
-                            })
-                            ta_notified.append(int(pr_id))
-                        auto_approved.append(int(pr_id))
-                        report["myVote"] = "approved"
-                        report["canComplete"] = True
-                except Exception:
-                    pass
+            with _auto_approve_lock:
+                auto_approved = state.setdefault("auto_approved", [])
+                if int(pr_id) not in auto_approved or report["myVote"] != "approved":
+                    # Si el voto fue reseteado, remover del set para reintentar
+                    if int(pr_id) in auto_approved and report["myVote"] != "approved":
+                        auto_approved.remove(int(pr_id))
+                    try:
+                        result = subprocess.run([
+                            "az", "repos", "pr", "set-vote", "--id", pr_id,
+                            "--vote", "approve", "--org", ORG_URL, "-o", "json"
+                        ], capture_output=True, text=True)
+                        if result.returncode == 0:
+                            logger.info("[auto-approve] PR %s aprobado automáticamente", pr_id)
+                            thread_ts = find_pr_thread(int(pr_id), save_if_found=True)
+                            payload = {"channel": SLACK_PR_CHANNEL, "text": "✅ Aprobado"}
+                            if thread_ts:
+                                payload["thread_ts"] = thread_ts
+                            try:
+                                slack_api("chat.postMessage", payload)
+                            except Exception as se:
+                                logger.error("[auto-approve] Error notificando Slack PR %s: %s", pr_id, se)
+                            # Notificar al TA para que revise
+                            ta_notified = state.setdefault("ta_notified", [])
+                            if int(pr_id) not in ta_notified:
+                                try:
+                                    mentions = get_pr_ta_reviewers(int(pr_id))
+                                    text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
+                                    slack_api("chat.postMessage", {
+                                        "channel": SLACK_PR_CHANNEL,
+                                        "thread_ts": thread_ts,
+                                        "text": text
+                                    })
+                                    ta_notified.append(int(pr_id))
+                                except Exception as te:
+                                    logger.error("[auto-approve] Error notificando TA PR %s: %s", pr_id, te)
+                            auto_approved.append(int(pr_id))
+                            report["myVote"] = "approved"
+                            report["canComplete"] = True
+                        else:
+                            logger.warning("[auto-approve] Falló az vote para PR %s: %s",
+                                           pr_id, result.stderr or result.stdout)
+                    except Exception as e:
+                        logger.error("[auto-approve] Excepción aprobando PR %s: %s", pr_id, e)
 
         reports.append(report)
     save_state(state)
