@@ -329,27 +329,42 @@ def _api_azure(url, token):
 
 
 def _release_status(release):
+    """Retorna (status, deploy_date) donde deploy_date es ISO string o ''."""
     envs = release.get("environments", [])
     if not envs:
-        return "unknown"
+        return "unknown", ""
 
     statuses = [e.get("status", "") for e in envs]
 
     if any(s == "inProgress" for s in statuses):
-        return "inProgress"
+        return "inProgress", ""
 
     if any(s in ("rejected", "failed", "canceled") for s in statuses):
-        return "failed"
+        # Fecha del último deploy fallido
+        date = _latest_deploy_date(envs)
+        return "failed", date
 
     # Ignorar notStarted — para PRs solo corre el Checkonly y el otro queda notStarted
     active = [s for s in statuses if s != "notStarted"]
     if active and all(s in ("succeeded", "skipped") for s in active):
-        return "succeeded"
+        date = _latest_deploy_date(envs)
+        return "succeeded", date
 
     if any(s == "queued" for s in statuses):
-        return "inProgress"
+        return "inProgress", ""
 
-    return "inProgress"
+    return "inProgress", ""
+
+
+def _latest_deploy_date(envs):
+    """Extrae la fecha más reciente de completado entre los environments."""
+    dates = []
+    for env in envs:
+        for attempt in env.get("deploySteps", []):
+            d = attempt.get("lastModifiedOn") or attempt.get("queuedOn", "")
+            if d:
+                dates.append(d)
+    return max(dates) if dates else ""
 
 
 def get_pr_approval_date(pr_id, token):
