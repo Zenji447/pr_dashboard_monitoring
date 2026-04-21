@@ -804,7 +804,8 @@ def _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, aut
         blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
         if author and author.lower().strip() in blocked_authors:
             return
-        for _ in range(60):  # máx 60 intentos = ~1 hora
+        logger.info("[deploy-poll] Iniciando polling para PR %s", pr_id)
+        for attempt in range(60):  # máx 60 intentos = ~1 hora
             time.sleep(60)
             try:
                 status, deploy_date_bg = get_deploy_status(pr_id, merge_commit, closed_date, target_branch)
@@ -815,16 +816,23 @@ def _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, aut
                         text = "✅ Despliegue completado" if status == "succeeded" else "❌ Despliegue fallido"
                         thread_ts = find_pr_thread(pr_id, save_if_found=True)
                         if not thread_ts:
-                            continue  # reintentar hasta encontrar el hilo
-                        slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
+                            logger.warning("[deploy-poll] PR %s: hilo no encontrado, reintentando", pr_id)
+                            continue
+                        try:
+                            slack_api("chat.postMessage", {
+                                "channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts
+                            })
+                        except Exception as se:
+                            logger.error("[deploy-poll] Error notificando Slack PR %s: %s", pr_id, se)
                         deploy_notified.append(pr_id)
                         save_state(state)
-                    from datetime import datetime, timezone
                     final_date = deploy_date_bg or datetime.now(timezone.utc).isoformat()
                     _sheet_update_deploy(pr_id, status, final_date)
+                    logger.info("[deploy-poll] PR %s: deploy %s", pr_id, status)
                     return
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[deploy-poll] PR %s intento %d error: %s", pr_id, attempt + 1, e)
+        logger.warning("[deploy-poll] PR %s: timeout tras 60 intentos", pr_id)
     threading.Thread(target=_run, daemon=True).start()
 
 
