@@ -271,14 +271,19 @@ def run(cmd):
 
 
 def slack_api(method, payload):
-    data = json.dumps(payload).encode()
-    req = Request(
-        f"https://slack.com/api/{method}",
-        data=data,
-        headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
-    )
-    with urlopen(req, timeout=10) as r:
-        return json.loads(r.read())
+    def _call():
+        data = json.dumps(payload).encode()
+        req = Request(
+            f"https://slack.com/api/{method}",
+            data=data,
+            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
+        )
+        with urlopen(req, timeout=10) as r:
+            resp = json.loads(r.read())
+        if not resp.get("ok"):
+            raise RuntimeError(f"Slack API error [{method}]: {resp.get('error', 'unknown')}")
+        return resp
+    return _retry(_call, retries=3, label=f"slack.{method}")
 
 
 def find_pr_thread(pr_id, save_if_found=False):
