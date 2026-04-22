@@ -255,9 +255,12 @@ Contiene toda la lógica de clasificación: validación de títulos, análisis d
 | Problema | Causa probable | Solución |
 |---|---|---|
 | `Failed to fetch` en el browser | Servidor Flask caído | Reiniciar `python3 app.py` |
+| `Error consultando PRs activos` | Token de Azure expirado | Ejecutar `az login --allow-no-subscriptions --tenant "46bb22b8-4c2c-40ff-8360-7b6334821279"` |
 | PRs no aparecen | Rama destino no soportada | Verificar que el target esté en la lista de ramas soportadas |
 | Deploy siempre `—` | PR aún activo (no completado) | El deploy solo aparece después de completar el PR |
 | Botón Aprobar deshabilitado | Veredicto `rechazar` o `revisar` | Revisar las razones mostradas en rojo |
+| `Error al aprobar el PR` | PR ya completado o token expirado | Verificar estado del PR en Azure; si es token, ejecutar `az login` |
 | Falso positivo en manifest | Repo local desactualizado | Correr `git fetch origin` en `/home/zen6/cc/SalesForce` |
 | Google Sheets 403 | Hoja no compartida con service account | Compartir con `pr-dashboard-bot@pr-dashboard-493917.iam.gserviceaccount.com` como Editor |
 | `ModuleNotFoundError: google` | Dependencias no instaladas | `pip install -r requirements.txt --break-system-packages` |
+| Mensajes en Slack fuera del hilo | Hilo del PR no encontrado | El sistema ahora valida que exista el hilo antes de enviar; revisar que el PR esté publicado en Slack |

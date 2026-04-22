@@ -205,6 +205,37 @@ def forceapp_member_from_path(path):
     return name
 
 
+def _load_deploy_sequence(target_ref):
+    """Retorna el conjunto de manifestFiles normalizados de todos los deploy sequences."""
+    manifests = set()
+    for path in ("manifest/deploysequence.json",
+                 "manifest-pipeline/release-06.1/deploy-secuence-r6.1.json",
+                 "manifest-pipeline/deploysequence.json"):
+        content = file_content(target_ref, path)
+        if content:
+            try:
+                data = json.loads(content)
+                for b in data.get("builds", []):
+                    mf = b.get("manifestFile", "")
+                    if mf:
+                        manifests.add(mf.lstrip("./").lstrip(".").lstrip("/"))
+            except Exception:
+                pass
+    return manifests
+
+
+def yaml_in_deploy_sequence(target_ref, release_key, datatype):
+    """Verifica que el YAML del datatype esté referenciado en el deploy sequence."""
+    deploy_manifests = _load_deploy_sequence(target_ref)
+    if not deploy_manifests:
+        return True  # si no se puede leer, no bloquear
+    for candidate in datapack_manifest_candidates(release_key, datatype):
+        normalized = candidate.lstrip("./").lstrip(".").lstrip("/")
+        if normalized in deploy_manifests:
+            return True
+    return False
+
+
 def component_in_datapack_manifest(target_ref, release_key, datatype, folder):
     for candidate in datapack_manifest_candidates(release_key, datatype):
         content = file_content(target_ref, candidate)
@@ -280,7 +311,7 @@ def classify(pr, changes, token=None):
                 reasons.append(f"componente duplicado en {dup['file']}: {dup['component']} (líneas {dup['lines'][0]}, {dup['lines'][1]})")
 
     if target == "develop":
-        if "r6.1" not in source and "r6-1" not in source:
+        if not re.search(r"r?6[.\-]1", source, re.IGNORECASE):
             verdict = "rechazar"
             reasons.append("PR hacia develop sin release r6.1 en rama fuente")
         if "sp69" not in source.lower():
@@ -314,8 +345,10 @@ def classify(pr, changes, token=None):
                     if not ok:
                         verdict = "rechazar"
                         reasons.append(f"dataPack {folder} no encontrado en manifest base {release_key}")
-                    elif verdict == "aprobable":
-                        warnings.append(f"dataPack validado contra {manifest}")
+                    else:
+                        if not yaml_in_deploy_sequence(target_ref, release_key, datatype):
+                            verdict = "rechazar"
+                            reasons.append(f"dataPack {datatype}.yaml no está en el deploy sequence")
 
     if forceapp_paths:
         package_in_pr = any(p.endswith("package-metadata.xml") for p in paths)

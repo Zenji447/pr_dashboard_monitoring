@@ -13,6 +13,10 @@ from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from flask import Flask, jsonify, render_template, request, abort
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Google Sheets
 from google.oauth2.service_account import Credentials
@@ -30,8 +34,12 @@ logger = logging.getLogger("pr_dashboard")
 _state_lock = threading.Lock()
 _auto_approve_lock = threading.Lock()
 
-SHEET_ID = "1jsYHmGm-2eN5986bgN5jlPO86guNfWmnf980H4TsdO0"
-CREDS_PATH = Path(__file__).parent.parent / "google_credentials.json"
+# ── Configuración desde variables de entorno ──────────────────────────────────
+SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "1jsYHmGm-2eN5986bgN5jlPO86guNfWmnf980H4TsdO0")
+CREDS_PATH = Path(os.getenv("GOOGLE_CREDS_PATH", "../memoria/service-account-key.json"))
+if not CREDS_PATH.is_absolute():
+    CREDS_PATH = Path(__file__).parent.parent / CREDS_PATH
+
 SHEET_HEADERS = [
     "PR ID", "Título", "Autor", "Branch destino",
     "Fecha creación", "Fecha aprobación", "Fecha completado", "Fecha despliegue",
@@ -182,14 +190,17 @@ def save_state(state):
     with _state_lock:
         _save_state_raw(state)
 
-ORG_URL = "https://dev.azure.com/OrgClaroColombia"
-PROJECT = "SalesForce"
-REPOSITORY = "SalesForce"
+ORG = os.getenv("AZURE_ORG", "OrgClaroColombia")
+ORG_URL = f"https://dev.azure.com/{ORG}"
+PROJECT = os.getenv("AZURE_PROJECT", "SalesForce")
+REPOSITORY = os.getenv("AZURE_REPOSITORY", "SalesForce")
+SLACK_PR_CHANNEL = os.getenv("SLACK_PR_CHANNEL", "C080K9D6EG2")
 PIPELINE_ID = 3840
 SLACK_PR_CHANNEL = "C080K9D6EG2"
 
 AUTO_APPROVE_CONFIG_PATH = Path(__file__).parent.parent / "memoria" / "auto_approve_config.json"
 BLOCKED_AUTHORS_PATH = Path(__file__).parent.parent / "memoria" / "blocked_authors.json"
+BLOCKED_BRANCHES_PATH = Path(__file__).parent.parent / "memoria" / "blocked_branches.json"
 
 def load_auto_approve_config():
     try:
@@ -219,6 +230,20 @@ def save_blocked_authors(authors):
     except Exception as e:
         logger.error("[config] Error guardando blocked_authors: %s", e)
 
+def load_blocked_branches():
+    try:
+        if BLOCKED_BRANCHES_PATH.exists():
+            return json.loads(BLOCKED_BRANCHES_PATH.read_text())
+    except Exception as e:
+        logger.error("[config] Error leyendo blocked_branches: %s", e)
+    return []
+
+def save_blocked_branches(branches):
+    try:
+        BLOCKED_BRANCHES_PATH.write_text(json.dumps(branches, indent=2, ensure_ascii=False))
+    except Exception as e:
+        logger.error("[config] Error guardando blocked_branches: %s", e)
+
 TA_SLACK_IDS = {
     "gustavo alonso muciño": "U06JUHG1G9Y",
     "hugo revuelta":         "U07TQ8JNMBR",
@@ -228,26 +253,13 @@ TA_SLACK_IDS = {
     "luis guilherme lino":   "U023L6SJVQW",
 }
 
-SLACK_TOKEN = None
-API_KEY = None  # Clave para proteger endpoints de acción
+SLACK_TOKEN = os.getenv("SLACK_TOKEN")
+API_KEY = os.getenv("API_KEY")
 
-def _load_env():
-    global SLACK_TOKEN, API_KEY
-    env_path = Path(__file__).parent.parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if line.startswith("SLACK_TOKEN="):
-                SLACK_TOKEN = line.split("=", 1)[1].strip()
-            elif line.startswith("DASHBOARD_API_KEY="):
-                API_KEY = line.split("=", 1)[1].strip()
-    # También aceptar desde variables de entorno del sistema
-    if not SLACK_TOKEN:
-        SLACK_TOKEN = os.environ.get("SLACK_TOKEN")
-    if not API_KEY:
-        API_KEY = os.environ.get("DASHBOARD_API_KEY")
-
-_load_env()
+if not SLACK_TOKEN:
+    logger.warning("SLACK_TOKEN no configurado en .env")
+if not API_KEY:
+    logger.warning("API_KEY no configurado en .env — endpoints de acción sin protección")
 
 # ── Decorador de autenticación por API key ────────────────────────────────────
 def require_api_key(f):
@@ -313,7 +325,13 @@ def slack_api(method, payload):
 
 
 def find_pr_thread(pr_id, save_if_found=False):
-    """Busca el thread_ts del PR. Si save_if_found=True, lo guarda en el estado."""
+    """Busca el thread_ts del PR. Si save_if_found=True, lo guarda en el estado.
+    
+    TROUBLESHOOTING: Si los mensajes llegan fuera del hilo:
+    - Verificar que el PR esté publicado en Slack (canal C080K9D6EG2)
+    - El sistema ahora valida que exista el hilo antes de enviar mensajes
+    - Si no encuentra el hilo, registra un warning en los logs
+    """
     state = load_state()
     pr_threads = state.setdefault("pr_threads", {})
     
@@ -455,19 +473,34 @@ def _release_status(release):
     if any(s == "inProgress" for s in statuses):
         return "inProgress", ""
 
-    if any(s in ("rejected", "failed", "canceled") for s in statuses):
-        # Fecha del último deploy fallido
-        date = _latest_deploy_date(envs)
-        return "failed", date
-
-    # Ignorar notStarted — para PRs solo corre el Checkonly y el otro queda notStarted
-    active = [s for s in statuses if s != "notStarted"]
-    if active and all(s in ("succeeded", "skipped") for s in active):
-        date = _latest_deploy_date(envs)
-        return "succeeded", date
-
     if any(s == "queued" for s in statuses):
         return "inProgress", ""
+
+    # Ignorar notStarted
+    active_envs = [e for e in envs if e.get("status", "") != "notStarted"]
+    if not active_envs:
+        return "inProgress", ""
+
+    active_statuses = [e.get("status", "") for e in active_envs]
+
+    # Si todos los activos son succeeded/skipped → éxito
+    if all(s in ("succeeded", "skipped") for s in active_statuses):
+        return "succeeded", _latest_deploy_date(active_envs)
+
+    # Si hay mezcla de succeeded y failed → comparar fechas, gana el más reciente
+    has_success = any(s in ("succeeded", "skipped") for s in active_statuses)
+    has_failure = any(s in ("rejected", "failed", "canceled") for s in active_statuses)
+    if has_success and has_failure:
+        success_date = _latest_deploy_date([e for e in active_envs if e.get("status") in ("succeeded", "skipped")])
+        failure_date = _latest_deploy_date([e for e in active_envs if e.get("status") in ("rejected", "failed", "canceled")])
+        if success_date and failure_date:
+            if success_date >= failure_date:
+                return "succeeded", success_date
+            return "failed", failure_date
+        return "succeeded" if success_date else "failed", success_date or failure_date
+
+    if has_failure:
+        return "failed", _latest_deploy_date(active_envs)
 
     return "inProgress", ""
 
@@ -533,17 +566,29 @@ def get_pr_policy_status(pr_id, token):
 
 
 def get_prs():
+    # TROUBLESHOOTING: Si falla aquí con "token expired", ejecutar:
+    # az login --allow-no-subscriptions --tenant "46bb22b8-4c2c-40ff-8360-7b6334821279"
     token = get_token()
-    prs = json.loads(run([
-        "az", "repos", "pr", "list", "--status", "active",
-        "--repository", REPOSITORY, "--org", ORG_URL, "--project", PROJECT, "-o", "json",
-    ]))
+    try:
+        prs = json.loads(run([
+            "az", "repos", "pr", "list", "--status", "active",
+            "--repository", REPOSITORY, "--org", ORG_URL, "--project", PROJECT, "-o", "json",
+        ]))
+    except Exception as e:
+        logger.error("[get_prs] Error consultando PRs: %s", e)
+        raise
     prs = [pr for pr in prs if normalize_ref(pr.get("targetRefName", "")) in {"develop", "develop-pr", "releaseproyecto/r6"}]
     state = load_state()
     seen = state.setdefault("seen", {})
     blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
+    blocked_branches = [b.lower().strip() for b in load_blocked_branches()]
     reports = []
     for pr in prs:
+        pr_id = str(pr["pullRequestId"])
+        source_branch = normalize_ref(pr.get("sourceRefName", "")).lower().strip()
+        target_branch_raw = normalize_ref(pr.get("targetRefName", "")).lower().strip()
+        if any(bb in source_branch for bb in blocked_branches if bb):
+            continue
         pr_id = str(pr["pullRequestId"])
         changes = fetch_changes(pr_id, token)
         report = classify(pr, changes, token=token)
@@ -551,32 +596,59 @@ def get_prs():
         report["url"] = f"{ORG_URL}/{PROJECT}/_git/{REPOSITORY}/pullrequest/{pr_id}"
         report["myVote"] = get_my_vote(pr)
         report["blocked"] = (report.get("createdBy") or "").lower().strip() in blocked_authors
+        report["frozen"] = any(bb in normalize_ref(pr.get("targetRefName", "")).lower() for bb in blocked_branches if bb)
         report["hasConflicts"] = pr.get("mergeStatus") == "conflicts"
         policy_status = get_pr_policy_status(pr_id, token)
         report["policyStatus"] = policy_status
         report["canComplete"] = policy_status == "approved"
         if report["hasConflicts"]:
             report["verdict"] = "resolver conflicto"
-            conflicts_notified = state.setdefault("conflicts_notified", [])
-            if int(pr_id) not in conflicts_notified:
+            with _state_lock:
+                conflicts_notified = state.setdefault("conflicts_notified", [])
+                should_notify = int(pr_id) not in conflicts_notified
+                if should_notify:
+                    conflicts_notified.append(int(pr_id))
+                    save_state(state)
+            if should_notify:
                 try:
                     thread_ts = wait_for_pr_thread(int(pr_id))
-                    slack_api("chat.postMessage", {
-                        "channel": SLACK_PR_CHANNEL,
-                        "thread_ts": thread_ts,
-                        "text": "⚠️ ¡Por favor resolver conflicto!"
-                    })
-                    conflicts_notified.append(int(pr_id))
+                    if thread_ts:
+                        slack_api("chat.postMessage", {
+                            "channel": SLACK_PR_CHANNEL,
+                            "thread_ts": thread_ts,
+                            "text": "⚠️ ¡Por favor resolver conflicto!"
+                        })
+                    else:
+                        logger.warning("[conflicts] PR %s: hilo no encontrado, no se notificó", pr_id)
                 except Exception:
                     pass
         elif policy_status == "failed":
             report["verdict"] = "evaluar check"
-        elif policy_status == "running" and report["verdict"] not in ("rechazar", "revisar"):
+            with _state_lock:
+                check_notified = state.setdefault("check_notified", [])
+                should_notify_check = int(pr_id) not in check_notified
+                if should_notify_check:
+                    check_notified.append(int(pr_id))
+                    save_state(state)
+            if should_notify_check:
+                try:
+                    thread_ts = wait_for_pr_thread(int(pr_id))
+                    if thread_ts:
+                        slack_api("chat.postMessage", {
+                            "channel": SLACK_PR_CHANNEL,
+                            "thread_ts": thread_ts,
+                            "text": "🔍 Por favor verifica el check del Pull Request"
+                        })
+                    else:
+                        logger.warning("[check] PR %s: hilo no encontrado, no se notificó", pr_id)
+                except Exception:
+                    pass
+        elif policy_status == "running" and report["verdict"] not in ("rechazar", "revisar") and report["myVote"] != "approved":
             report["verdict"] = "posible aprobación"
 
         # Si ya aprobé pero el TA no ha aprobado aún
         if (report["myVote"] == "approved" and not report["canComplete"]
-                and not report["hasConflicts"] and policy_status not in ("failed", "running")):
+                and not report["hasConflicts"] and policy_status not in ("failed",)):
             report["verdict"] = "TA Reviewer"
 
         # Auto-aprobación
@@ -606,17 +678,21 @@ def get_prs():
                         ], capture_output=True, text=True)
                         if result.returncode == 0:
                             logger.info("[auto-approve] PR %s aprobado automáticamente", pr_id)
-                            thread_ts = find_pr_thread(int(pr_id), save_if_found=True)
-                            payload = {"channel": SLACK_PR_CHANNEL, "text": "✅ Aprobado"}
+                            thread_ts = wait_for_pr_thread(int(pr_id), interval=10, max_wait=300)
                             if thread_ts:
-                                payload["thread_ts"] = thread_ts
-                            try:
-                                slack_api("chat.postMessage", payload)
-                            except Exception as se:
-                                logger.error("[auto-approve] Error notificando Slack PR %s: %s", pr_id, se)
+                                try:
+                                    slack_api("chat.postMessage", {
+                                        "channel": SLACK_PR_CHANNEL,
+                                        "thread_ts": thread_ts,
+                                        "text": "✅ Aprobado"
+                                    })
+                                except Exception as se:
+                                    logger.error("[auto-approve] Error notificando Slack PR %s: %s", pr_id, se)
+                            else:
+                                logger.warning("[auto-approve] PR %s: hilo no encontrado, no se notificó", pr_id)
                             # Notificar al TA para que revise
                             ta_notified = state.setdefault("ta_notified", [])
-                            if int(pr_id) not in ta_notified:
+                            if int(pr_id) not in ta_notified and thread_ts:
                                 try:
                                     mentions = get_pr_ta_reviewers(int(pr_id))
                                     text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
@@ -640,7 +716,7 @@ def get_prs():
         reports.append(report)
     save_state(state)
     priority = {"rechazar": 0, "revisar": 1, "aprobable con cautela": 2, "aprobable": 3}
-    return sorted(reports, key=lambda x: (priority.get(x["verdict"], 9), x["id"]))
+    return sorted(reports, key=lambda x: (1 if x.get("blocked") else 0, priority.get(x["verdict"], 9), x["id"]))
 
 
 def _get_approval_date(pr_id, token):
@@ -754,9 +830,45 @@ def api_prs_range():
         return jsonify({"ok": False, "error": "Error consultando rango de PRs"}), 500
 
 
+@app.route("/api/history")
+def api_history():
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        date_from = request.args.get("from", today).strip()
+        date_to   = request.args.get("to", today).strip()
+        _validate_date(date_from)
+        _validate_date(date_to)
+        prs = prs_completed_by_date(date_from, date_to)
+        state = load_state()
+        auto_approved_ids = set(state.get("auto_approved", []))
+        blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
+        token = get_token()
+        rows = []
+        for pr in prs:
+            pr_id = pr["id"]
+            pr["blocked"] = (pr.get("createdBy") or "").lower().strip() in blocked_authors
+            try:
+                pr["policyStatus"] = get_pr_policy_status(pr_id, token)
+            except Exception:
+                pr["policyStatus"] = ""
+            approval_date = _get_approval_date(pr_id, token) or pr.get("closedDate", "")
+            deploy_st, deploy_date = get_deploy_status(
+                pr_id, pr.get("mergeCommit"), pr.get("closedDate"), pr.get("target")
+            )
+            rows.append(_pr_to_row(pr, deploy_status=deploy_st, deploy_date=deploy_date,
+                                   approval_date=approval_date, auto_approved=pr_id in auto_approved_ids))
+        return jsonify({"ok": True, "headers": SHEET_HEADERS, "rows": rows})
+    except Exception as e:
+        logger.error("[api/history] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error consultando historial"}), 500
+
+
 @app.route("/api/pr/<int:pr_id>/approve", methods=["POST"])
 @require_api_key
 def approve(pr_id):
+    # TROUBLESHOOTING: Si falla con "Error al aprobar el PR":
+    # 1. Verificar que el PR esté activo (no completado)
+    # 2. Si es token expirado: az login --allow-no-subscriptions --tenant "46bb22b8-4c2c-40ff-8360-7b6334821279"
     try:
         result = subprocess.run([
             "az", "repos", "pr", "set-vote", "--id", str(pr_id),
@@ -830,18 +942,27 @@ def reject(pr_id):
 def _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, author=None):
     """Polling de despliegue en background, independiente del navegador."""
     def _run():
-        blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
-        if author and author.lower().strip() in blocked_authors:
+        if author and author.lower().strip() in [a.lower().strip() for a in load_blocked_authors()]:
             return
         logger.info("[deploy-poll] Iniciando polling para PR %s", pr_id)
         for attempt in range(60):  # máx 60 intentos = ~1 hora
             time.sleep(60)
+            # Re-verificar bloqueo en cada ciclo
+            if author and author.lower().strip() in [a.lower().strip() for a in load_blocked_authors()]:
+                logger.info("[deploy-poll] PR %s: autor bloqueado, deteniendo polling", pr_id)
+                return
             try:
                 status, deploy_date_bg = get_deploy_status(pr_id, merge_commit, closed_date, target_branch)
                 if status in ("succeeded", "failed"):
-                    state = load_state()
-                    deploy_notified = state.setdefault("deploy_notified", [])
-                    if pr_id not in deploy_notified:
+                    with _state_lock:
+                        state = load_state()
+                        deploy_notified = state.setdefault("deploy_notified", [])
+                        already = int(pr_id) in [int(x) for x in deploy_notified]
+                        if not already:
+                            deploy_notified.append(int(pr_id))
+                            save_state(state)
+                    is_blocked_now = author and author.lower().strip() in [a.lower().strip() for a in load_blocked_authors()]
+                    if not already and not is_blocked_now:
                         text = "✅ Despliegue completado" if status == "succeeded" else "❌ Despliegue fallido"
                         thread_ts = find_pr_thread(pr_id, save_if_found=True)
                         if not thread_ts:
@@ -853,8 +974,6 @@ def _poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, aut
                             })
                         except Exception as se:
                             logger.error("[deploy-poll] Error notificando Slack PR %s: %s", pr_id, se)
-                        deploy_notified.append(pr_id)
-                        save_state(state)
                     final_date = deploy_date_bg or datetime.now(timezone.utc).isoformat()
                     _sheet_update_deploy(pr_id, status, final_date)
                     logger.info("[deploy-poll] PR %s: deploy %s", pr_id, status)
@@ -921,9 +1040,14 @@ def complete(pr_id):
 @require_api_key
 def notify_deploy(pr_id):
     try:
-        state = load_state()
-        deploy_notified = state.setdefault("deploy_notified", [])
-        if pr_id in deploy_notified:
+        with _state_lock:
+            state = load_state()
+            deploy_notified = state.setdefault("deploy_notified", [])
+            already = int(pr_id) in [int(x) for x in deploy_notified]
+            if not already:
+                deploy_notified.append(int(pr_id))
+                save_state(state)
+        if already:
             return jsonify({"ok": True})
         data   = request.get_json(silent=True) or {}
         status = data.get("status", "")
@@ -934,8 +1058,6 @@ def notify_deploy(pr_id):
         if not thread_ts:
             return jsonify({"ok": False, "error": f"No se encontró el hilo del PR {pr_id}"}), 404
         slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
-        deploy_notified.append(pr_id)
-        save_state(state)
         return jsonify({"ok": True})
     except Exception as e:
         logger.error("[notify-deploy] PR %s excepción: %s", pr_id, e, exc_info=True)
@@ -1026,6 +1148,30 @@ def set_blocked_authors():
     except Exception as e:
         logger.error("[config/blocked-authors] %s", e, exc_info=True)
         return jsonify({"ok": False, "error": "Error guardando autores bloqueados"}), 500
+
+
+@app.route("/api/config/blocked-branches", methods=["GET"])
+def get_blocked_branches():
+    return jsonify(load_blocked_branches())
+
+@app.route("/api/config/blocked-branches", methods=["POST"])
+@require_api_key
+def set_blocked_branches():
+    try:
+        data = request.get_json(silent=True) or {}
+        branches = list(data.get("branches", []))
+        validated = []
+        for b in branches:
+            b = str(b).strip()
+            if b and len(b) <= 200:
+                validated.append(b)
+        if len(validated) > 100:
+            return jsonify({"ok": False, "error": "Máximo 100 ramas bloqueadas"}), 400
+        save_blocked_branches(validated)
+        return jsonify({"ok": True, "branches": validated})
+    except Exception as e:
+        logger.error("[config/blocked-branches] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error guardando ramas bloqueadas"}), 500
 
 
 @app.route("/api/stats")
@@ -1131,12 +1277,23 @@ def export_sheets():
         def _do_export():
             svc = _sheets_service()
             sheet = svc.spreadsheets()
-            sheet.values().clear(spreadsheetId=SHEET_ID, range="Hoja 1").execute()
-            sheet.values().update(
+            # Leer filas existentes para preservar historial
+            existing = sheet.values().get(
+                spreadsheetId=SHEET_ID, range="Hoja 1"
+            ).execute().get("values", [])
+            # Índice de PR ID en la fila (columna A = índice 0)
+            existing_ids = {r[0] for r in existing[1:] if r} if len(existing) > 1 else set()
+            # Solo agregar filas nuevas (excluir header y duplicados)
+            new_rows = [r for r in rows[1:] if str(r[0]) not in existing_ids]
+            if not new_rows:
+                return
+            # Agregar al final
+            sheet.values().append(
                 spreadsheetId=SHEET_ID,
-                range="Hoja 1!A1",
+                range="Hoja 1",
                 valueInputOption="RAW",
-                body={"values": rows},
+                insertDataOption="INSERT_ROWS",
+                body={"values": new_rows},
             ).execute()
         _retry(_do_export, retries=3, label="sheets.export")
 
@@ -1149,4 +1306,4 @@ def export_sheets():
 
 if __name__ == "__main__":
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
-    app.run(host="0.0.0.0", debug=debug_mode, port=5000)
+    app.run(host="0.0.0.0", debug=debug_mode, port=5000, threaded=True)

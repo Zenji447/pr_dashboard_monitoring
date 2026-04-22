@@ -12,5 +12,7 @@
   "then": {
     "type": "runCommand",
     "command": "git add -A && git commit -m \"auto commit: cambios guardados\""
-  }
+  },
+  "workspaceFolderName": "dashboard",
+  "shortName": "auto-commit-on-save"
 }
