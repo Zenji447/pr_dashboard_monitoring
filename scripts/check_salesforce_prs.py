@@ -158,9 +158,16 @@ def forceapp_manifest_candidates(release_key):
     ]
 
 
-def path_exists_in_ref(ref, path):
+def path_exists_in_ref(ref, path, token=None):
     out = git_lines(["ls-tree", "-r", "--name-only", ref, "--", path])
-    return any(line.strip() == path for line in out)
+    if any(line.strip() == path for line in out):
+        return True
+    # Fallback: verificar via API de Azure si el git local está desactualizado
+    if token:
+        branch = ref.replace("origin/", "")
+        content = file_content_from_api(path if path.startswith("/") else f"/{path}", branch, token)
+        return content is not None
+    return False
 
 
 def file_content(ref, path):
@@ -359,7 +366,7 @@ def classify(pr, changes, token=None):
             member = forceapp_member_from_path(p)
             if not member or not target_ref or not release_key:
                 continue
-            exists_in_target = path_exists_in_ref(target_ref, p.lstrip("/"))
+            exists_in_target = path_exists_in_ref(target_ref, p.lstrip("/"), token=token)
             if exists_in_target:
                 continue
             # Buscar package-metadata.xml en rama origen

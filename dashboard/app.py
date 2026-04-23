@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
@@ -565,16 +566,44 @@ def get_pr_policy_status(pr_id, token):
         return "unknown"
 
 
+class TokenExpiredError(Exception):
+    pass
+
+
+def _check_token():
+    """Obtiene el token y verifica que no esté expirado."""
+    try:
+        token = get_token()
+        # Verificar que el token funciona con una llamada mínima
+        result = subprocess.run(
+            ["az", "account", "get-access-token", "--resource", "499b84ac-1321-427f-aa17-267ca6975798", "-o", "json"],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0 or "AADSTS" in (result.stderr or "") or "Please run" in (result.stderr or ""):
+            raise TokenExpiredError("Token de Azure expirado")
+        return token
+    except TokenExpiredError:
+        raise
+    except Exception as e:
+        if "AADSTS" in str(e) or "Please run" in str(e) or "az login" in str(e):
+            raise TokenExpiredError("Token de Azure expirado")
+        raise
+
+
 def get_prs():
-    # TROUBLESHOOTING: Si falla aquí con "token expired", ejecutar:
-    # az login --allow-no-subscriptions --tenant "46bb22b8-4c2c-40ff-8360-7b6334821279"
-    token = get_token()
+    try:
+        token = _check_token()
+    except TokenExpiredError:
+        raise
     try:
         prs = json.loads(run([
             "az", "repos", "pr", "list", "--status", "active",
             "--repository", REPOSITORY, "--org", ORG_URL, "--project", PROJECT, "-o", "json",
         ]))
     except Exception as e:
+        err = str(e)
+        if "AADSTS" in err or "Please run" in err or "az login" in err or "token" in err.lower():
+            raise TokenExpiredError("Token de Azure expirado")
         logger.error("[get_prs] Error consultando PRs: %s", e)
         raise
     prs = [pr for pr in prs if normalize_ref(pr.get("targetRefName", "")) in {"develop", "develop-pr", "releaseproyecto/r6"}]
@@ -582,25 +611,39 @@ def get_prs():
     seen = state.setdefault("seen", {})
     blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
     blocked_branches = [b.lower().strip() for b in load_blocked_branches()]
-    reports = []
-    for pr in prs:
+    def _collect_pr_data(pr):
         pr_id = str(pr["pullRequestId"])
         source_branch = normalize_ref(pr.get("sourceRefName", "")).lower().strip()
-        target_branch_raw = normalize_ref(pr.get("targetRefName", "")).lower().strip()
-        if any(bb in source_branch for bb in blocked_branches if bb):
-            continue
-        pr_id = str(pr["pullRequestId"])
+        target_branch = normalize_ref(pr.get("targetRefName", "")).lower().strip()
+        # Filtrar solo por rama fuente bloqueada (no por destino — eso es freeze)
+        if any(bb in source_branch for bb in blocked_branches if bb and bb not in {"develop", "develop-pr", "releaseproyecto/r6"}):
+            return None
         changes = fetch_changes(pr_id, token)
         report = classify(pr, changes, token=token)
         report["creationDate"] = pr.get("creationDate", "")
         report["url"] = f"{ORG_URL}/{PROJECT}/_git/{REPOSITORY}/pullrequest/{pr_id}"
         report["myVote"] = get_my_vote(pr)
         report["blocked"] = (report.get("createdBy") or "").lower().strip() in blocked_authors
-        report["frozen"] = any(bb in normalize_ref(pr.get("targetRefName", "")).lower() for bb in blocked_branches if bb)
+        report["frozen"] = any(bb == target_branch for bb in blocked_branches if bb)
         report["hasConflicts"] = pr.get("mergeStatus") == "conflicts"
         policy_status = get_pr_policy_status(pr_id, token)
         report["policyStatus"] = policy_status
         report["canComplete"] = policy_status == "approved"
+        report["_targetRefName"] = pr.get("targetRefName", "")
+        return report
+
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {executor.submit(_collect_pr_data, pr): pr for pr in prs}
+        collected = []
+        for future in as_completed(futures):
+            result = future.result()
+            if result is not None:
+                collected.append(result)
+
+    reports = []
+    for report in collected:
+        pr_id = str(report["id"])
+        policy_status = report["policyStatus"]
         if report["hasConflicts"]:
             report["verdict"] = "resolver conflicto"
             with _state_lock:
@@ -653,7 +696,7 @@ def get_prs():
 
         # Auto-aprobación
         auto_cfg = load_auto_approve_config()
-        target_branch = normalize_ref(pr.get("targetRefName", ""))
+        target_branch = normalize_ref(report.pop("_targetRefName", ""))
         if (
             auto_cfg.get("enabled")
             and target_branch in auto_cfg.get("branches", [])
@@ -770,6 +813,18 @@ def prs_completed_by_date(date_from, date_to):
     ]
 
 
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    """Lanza az login en background y abre el browser para reautenticar."""
+    def _run():
+        subprocess.run([
+            "az", "login", "--allow-no-subscriptions",
+            "--tenant", "46bb22b8-4c2c-40ff-8360-7b6334821279"
+        ])
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True})
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -784,6 +839,8 @@ def health():
 def api_prs():
     try:
         return jsonify({"ok": True, "prs": get_prs()})
+    except TokenExpiredError:
+        return jsonify({"ok": False, "error": "TOKEN_EXPIRED"}), 401
     except Exception as e:
         logger.error("[api/prs] %s", e, exc_info=True)
         return jsonify({"ok": False, "error": "Error consultando PRs activos"}), 500
@@ -1174,6 +1231,46 @@ def set_blocked_branches():
         return jsonify({"ok": False, "error": "Error guardando ramas bloqueadas"}), 500
 
 
+@app.route("/api/branches")
+def api_branches():
+    return jsonify({"ok": True, "branches": ["develop", "develop-pr", "releaseproyecto/r6"]})
+
+
+@app.route("/api/branch/create", methods=["POST"])
+def create_branch():
+    try:
+        data = request.get_json(silent=True) or {}
+        branch_name = str(data.get("name", "")).strip()
+        base_branch = str(data.get("base", "develop")).strip()
+        if not branch_name:
+            return jsonify({"ok": False, "error": "Nombre de rama requerido"}), 400
+        result = subprocess.run([
+            "az", "repos", "ref", "create",
+            "--name", f"refs/heads/{branch_name}",
+            "--object-id", _get_branch_object_id(base_branch),
+            "--repository", REPOSITORY,
+            "--org", ORG_URL,
+            "--project", PROJECT,
+            "-o", "json"
+        ], capture_output=True, text=True)
+        if result.returncode != 0:
+            return jsonify({"ok": False, "error": result.stderr or result.stdout}), 500
+        return jsonify({"ok": True, "branch": branch_name})
+    except Exception as e:
+        logger.error("[branch/create] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _get_branch_object_id(branch_name):
+    token = get_token()
+    url = f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}/refs?filter=heads/{branch_name}&api-version=7.1"
+    req = Request(url, headers={"Authorization": f"Bearer {token}"})
+    with urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read())
+    return data["value"][0]["objectId"]
+
+
+
 @app.route("/api/stats")
 def api_stats():
     try:
@@ -1221,6 +1318,8 @@ def api_stats():
                 "ready_to_complete": sum(1 for p in active_prs if p.get("canComplete") and p.get("myVote") == "approved"),
             }
         })
+    except TokenExpiredError:
+        return jsonify({"ok": False, "error": "TOKEN_EXPIRED"}), 401
     except Exception as e:
         logger.error("[api/stats] %s", e, exc_info=True)
         return jsonify({"ok": False, "error": "Error calculando estadísticas"}), 500
@@ -1304,6 +1403,21 @@ def export_sheets():
         return jsonify({"ok": False, "error": "Error exportando a Sheets"}), 500
 
 
+LOCAL_REPO = Path("/home/zen6/cc/SalesForce")
+
+def _git_fetch_loop():
+    """Hace git fetch cada 5 minutos para mantener el repo local actualizado."""
+    while True:
+        try:
+            subprocess.run(["git", "-C", str(LOCAL_REPO), "fetch", "origin", "--prune"],
+                           capture_output=True, timeout=300)
+            logger.info("[git-fetch] fetch completado")
+        except Exception as e:
+            logger.warning("[git-fetch] error: %s", e)
+        time.sleep(300)
+
+
 if __name__ == "__main__":
+    threading.Thread(target=_git_fetch_loop, daemon=True).start()
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
     app.run(host="0.0.0.0", debug=debug_mode, port=5000, threaded=True)

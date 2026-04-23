@@ -382,9 +382,19 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ── Top progress bar ── */
+  #top-bar {
+    position: fixed; top: 0; left: 0; z-index: 9999;
+    height: 3px; width: 0%;
+    background: linear-gradient(90deg, #3b82f6, #6366f1);
+    transition: width .3s ease;
+    box-shadow: 0 0 8px #3b82f6;
+  }
+
   /* ── Panel ── */
   .panel { display: none; }
   .panel.active { display: block; }
+  .hidden { display: none; }
 
   /* ── PR id cell ── */
   .pr-id {
@@ -457,9 +467,50 @@
     .main { padding: 16px; }
     .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   }
+
+  /* ── New branch button ── */
+  .btn-new-branch {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.25);
+    color: #93c5fd; border-radius: 8px; padding: 8px 12px;
+    font-size: .8rem; font-weight: 600; cursor: pointer;
+    transition: all .15s;
+  }
+  .btn-new-branch:hover { background: rgba(59,130,246,.18); border-color: rgba(59,130,246,.4); }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+    z-index: 1000; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 16px; padding: 28px; width: 420px; max-width: 95vw;
+    box-shadow: 0 24px 64px rgba(0,0,0,.5);
+  }
+  .modal-title {
+    font-size: 1rem; font-weight: 700; color: var(--text);
+    margin-bottom: 20px; display: flex; align-items: center; gap: 8px;
+  }
+  .modal-field { margin-bottom: 16px; }
+  .modal-label { font-size: .75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; display: block; }
+  .modal-input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border2);
+    color: var(--text); border-radius: 8px; padding: 9px 12px;
+    font-size: .875rem; outline: none; transition: border-color .15s;
+  }
+  .modal-input:focus { border-color: var(--accent); }
+  .modal-input::placeholder { color: var(--muted); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+  .modal-status { font-size: .75rem; margin-top: 10px; min-height: 18px; }
 </style>
 </head>
 <body>
+
+<!-- Top progress bar -->
+<div id="top-bar"></div>
 
 <!-- Header -->
 <header class="header">
@@ -524,6 +575,14 @@
           <button class="btn-add" onclick="addBlockedBranch()">+</button>
         </div>
       </div>
+    </div>
+
+    <!-- Crear rama -->
+    <div class="sidebar-section" style="padding:10px 16px">
+      <button class="btn-new-branch" onclick="openNewBranchModal()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0"><path d="M11.75 2.5a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0zm.75 2.25a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5zM4.25 13.5a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0zM5 15.75a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5zM4.25 2.5a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0zM5 4.75a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5z"/><path d="M6.5 2.5h1A3.5 3.5 0 0 1 11 6v4a3.5 3.5 0 0 1-3.5 3.5h-1v-1.5h1A2 2 0 0 0 9.5 10V6A2 2 0 0 0 7.5 4h-1V2.5z"/></svg>
+        <span data-i18n="createBranch">Nueva rama</span>
+      </button>
     </div>
 
   </aside>
@@ -607,10 +666,24 @@
     <div id="error-msg"></div>
 
     <!-- Panels -->
-    <div class="panel active" id="panel-activos">
+    <div id="panel-activos" class="panel active">
       <div class="table-wrap">
         <table><thead><tr><th>#</th><th data-i18n="colTitle">Título</th><th data-i18n="colAuthor">Autor</th><th>Source → Target</th><th>Scope</th><th data-i18n="colVerdict">Veredicto</th><th data-i18n="colActions">Acciones</th></tr></thead>
         <tbody id="body-activos"><tr><td colspan="7" style="color:#64748b;text-align:center;padding:40px" data-i18n="loading">Cargando...</td></tr></tbody></table>
+      </div>
+      <div style="margin-top:18px">
+        <div onclick="document.getElementById('body-bloqueados-wrap').classList.toggle('hidden')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;padding:8px 0;border-top:1px solid var(--border)">
+          <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:8px">
+            <span style="display:inline-block;width:3px;height:12px;background:linear-gradient(var(--muted),#475569);border-radius:2px"></span>
+            <span data-i18n="blockedFrozenSection">Autores bloqueados / Ramas congeladas</span>
+            <span id="count-bloqueados" style="background:rgba(100,116,139,.15);border:1px solid rgba(100,116,139,.2);color:#94a3b8;font-size:.68rem;padding:1px 7px;border-radius:20px">0</span>
+          </span>
+          <span style="color:var(--muted);font-size:.75rem">▾</span>
+        </div>
+        <div id="body-bloqueados-wrap" class="table-wrap" style="margin-top:8px">
+          <table><thead><tr><th>#</th><th data-i18n="colTitle">Título</th><th data-i18n="colAuthor">Autor</th><th>Source → Target</th><th>Scope</th><th>Estado</th></tr></thead>
+          <tbody id="body-bloqueados"></tbody></table>
+        </div>
       </div>
     </div>
 
@@ -652,6 +725,29 @@
   </main>
 </div>
 
+<!-- New Branch Modal -->
+<div class="modal-overlay" id="new-branch-modal" onclick="if(event.target===this)closeNewBranchModal()">
+  <div class="modal">
+    <div class="modal-title">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="#93c5fd"><path d="M11.75 2.5a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0zm.75 2.25a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5zM4.25 13.5a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0zM5 15.75a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5zM4.25 2.5a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0zM5 4.75a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5z"/><path d="M6.5 2.5h1A3.5 3.5 0 0 1 11 6v4a3.5 3.5 0 0 1-3.5 3.5h-1v-1.5h1A2 2 0 0 0 9.5 10V6A2 2 0 0 0 7.5 4h-1V2.5z"/></svg>
+      <span data-i18n="createBranch">Nueva rama</span>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label" data-i18n="modalBranchName">Nombre de la rama</label>
+      <input class="modal-input" id="modal-branch-name" type="text" data-i18n-placeholder="createBranchPlaceholder" placeholder="Nombre de la rama..." onkeydown="if(event.key==='Enter')submitNewBranch()">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label" data-i18n="modalBranchBase">Rama base</label>
+      <select class="modal-input" id="modal-branch-base"></select>
+    </div>
+    <div class="modal-status" id="modal-branch-status"></div>
+    <div class="modal-actions">
+      <button onclick="closeNewBranchModal()" style="background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border2)" data-i18n="cancel">Cancelar</button>
+      <button onclick="submitNewBranch()" class="btn-sheets" data-i18n="createBranch">Nueva rama</button>
+    </div>
+  </div>
+</div>
+
 <script>
   function toggleSection(header) {
     header.closest('.collapsible-section').classList.toggle('collapsed');
@@ -663,7 +759,11 @@ const i18n = {
     title: "PR Dashboard — Salesforce",
     autoApprove: "Auto-aprobación", enable: "Activar",
     blockedAuthors: "Autores bloqueados", authorPlaceholder: "Nombre del autor...",
-    blockedBranches: "Ramas bloqueadas", branchPlaceholder: "Nombre de la rama...",
+    blockedBranches: "Ramas congeladas", branchPlaceholder: "Nombre de la rama...",
+    createBranch: "Nueva rama", createBranchPlaceholder: "Nombre de la rama...",
+    frozenBranches: "Ramas congeladas",
+    blockedFrozenSection: "Autores bloqueados / Ramas congeladas",
+    modalBranchName: "Nombre de la rama", modalBranchBase: "Rama base", cancel: "Cancelar",
     kpiActive: "PRs Activos", kpiCompleted: "Completados Hoy",
     kpiPending: "Pendientes Aprobación", kpiReady: "Listos para Completar",
     kpiAvgTime: "Tiempo Prom. Revisión", kpiConflicts: "Con Conflictos",
@@ -691,7 +791,11 @@ const i18n = {
     title: "PR Dashboard — Salesforce",
     autoApprove: "Auto-approval", enable: "Enable",
     blockedAuthors: "Blocked authors", authorPlaceholder: "Author name...",
-    blockedBranches: "Blocked branches", branchPlaceholder: "Branch name...",
+    blockedBranches: "Frozen branches", branchPlaceholder: "Branch name...",
+    createBranch: "New branch", createBranchPlaceholder: "Branch name...",
+    frozenBranches: "Frozen branches",
+    blockedFrozenSection: "Blocked authors / Frozen branches",
+    modalBranchName: "Branch name", modalBranchBase: "Base branch", cancel: "Cancel",
     kpiActive: "Active PRs", kpiCompleted: "Completed Today",
     kpiPending: "Pending Approval", kpiReady: "Ready to Complete",
     kpiAvgTime: "Avg. Review Time", kpiConflicts: "With Conflicts",
@@ -802,32 +906,17 @@ function renderTab(tab) {
     const prs = allPRs['activos'];
     if (!prs) return;
     const tbody = document.getElementById("body-activos");
-    tbody.innerHTML = prs.length ? prs.map(pr => {
+    const tbodyBlocked = document.getElementById("body-bloqueados");
+
+    const active = prs.filter(pr => !pr.frozen && !pr.blocked);
+    const blocked = prs.filter(pr => pr.frozen || pr.blocked);
+
+    document.getElementById("count-bloqueados").textContent = blocked.length;
+
+    tbody.innerHTML = active.length ? active.map(pr => {
       const cls = verdictClass[pr.verdict] || "badge-revisar";
       const reasons  = pr.reasons.length  ? `<div class="reasons">✗ ${pr.reasons.join(" · ")}</div>` : "";
       const warnings = pr.warnings.length ? `<div class="warnings">⚠ ${pr.warnings.join(" · ")}</div>` : "";
-      if (pr.frozen) {
-        return `<tr style="opacity:.55">
-          <td><a href="${pr.url}" target="_blank" class="pr-id">#${pr.id}</a></td>
-          <td><div class="pr-title">${esc(pr.title)}</div>${reasons}${warnings}</td>
-          <td>${esc(pr.createdBy||"—")}</td>
-          <td class="pr-branch">${esc(pr.source)}<br>→ ${esc(pr.target)}</td>
-          <td>${esc(pr.scope)}<br><span style="color:#64748b;font-size:.72rem">${pr.changedFiles} archivo(s)</span></td>
-          <td><span class="badge badge-frozen">🧊 Freeze</span></td>
-          <td style="color:#64748b;font-size:.75rem">${lang==='es'?'Rama congelada':'Branch frozen'}</td>
-        </tr>`;
-      }
-      if (pr.blocked) {
-        return `<tr style="opacity:.45">
-          <td><a href="${pr.url}" target="_blank" class="pr-id">#${pr.id}</a></td>
-          <td><div class="pr-title">${esc(pr.title)}</div>${reasons}${warnings}</td>
-          <td>${esc(pr.createdBy||"—")}</td>
-          <td class="pr-branch">${esc(pr.source)}<br>→ ${esc(pr.target)}</td>
-          <td>${esc(pr.scope)}<br><span style="color:#64748b;font-size:.72rem">${pr.changedFiles} archivo(s)</span></td>
-          <td><span class="badge badge-bloqueado">🚫 Bloqueado</span></td>
-          <td style="color:#64748b;font-size:.75rem">${lang==='es'?'Sin acciones':'No actions'}</td>
-        </tr>`;
-      }
       const canApprove = ["aprobable","aprobable con cautela","posible aprobación","evaluar check"].includes(pr.verdict);
       const approveLabel  = pr.myVote === 'approved'  ? `✓ ${lang==='es'?'Aprobado':'Approved'}`   : `✓ ${t('approve')}`;
       const completeLabel = pr.myVote === 'completed' ? `⚡ ${lang==='es'?'Completado':'Completed'}` : `⚡ ${t('complete')}`;
@@ -851,6 +940,22 @@ function renderTab(tab) {
         </td>
       </tr>`;
     }).join("") : `<tr><td colspan="7" style="color:#64748b;text-align:center;padding:40px">${lang==='es'?'No hay PRs activos':'No active PRs'}</td></tr>`;
+
+    tbodyBlocked.innerHTML = blocked.length ? blocked.map(pr => {
+      const reasons  = pr.reasons.length  ? `<div class="reasons">✗ ${pr.reasons.join(" · ")}</div>` : "";
+      const warnings = pr.warnings.length ? `<div class="warnings">⚠ ${pr.warnings.join(" · ")}</div>` : "";
+      const badge = pr.frozen
+        ? `<span class="badge badge-frozen">Freeze</span>`
+        : `<span class="badge badge-bloqueado">Bloqueado</span>`;
+      return `<tr style="opacity:.55">
+        <td><a href="${pr.url}" target="_blank" class="pr-id">#${pr.id}</a></td>
+        <td><div class="pr-title">${esc(pr.title)}</div>${reasons}${warnings}</td>
+        <td>${esc(pr.createdBy||"—")}</td>
+        <td class="pr-branch">${esc(pr.source)}<br>→ ${esc(pr.target)}</td>
+        <td>${esc(pr.scope)}<br><span style="color:#64748b;font-size:.72rem">${pr.changedFiles} archivo(s)</span></td>
+        <td>${badge}</td>
+      </tr>`;
+    }).join("") : `<tr><td colspan="6" style="color:#64748b;text-align:center;padding:20px">${lang==='es'?'Ninguno':'None'}</td></tr>`;
   } else {
     applyFilters();
   }
@@ -1019,7 +1124,22 @@ function setError(msg) {
   document.getElementById("spinner").style.display = "none";
   document.getElementById("status").textContent = "";
   const e = document.getElementById("error-msg");
-  e.textContent = "Error: " + msg; e.style.display = "block";
+  if (msg === "TOKEN_EXPIRED") {
+    e.innerHTML = '⚠️ Token de Azure expirado. <button onclick="doAzLogin()" style="margin-left:10px;padding:4px 14px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.85rem">🔑 Iniciar sesión</button><span id="login-status" style="margin-left:10px;font-size:.8rem;color:#94a3b8"></span>';
+  } else {
+    e.textContent = "Error: " + msg;
+  }
+  e.style.display = "block";
+}
+
+async function doAzLogin() {
+  document.getElementById("login-status").textContent = "Abriendo navegador para autenticar...";
+  try {
+    await fetch("/api/auth/login", { method: "POST" });
+    document.getElementById("login-status").textContent = "✅ Completa el login en el navegador, luego recarga.";
+  } catch(e) {
+    document.getElementById("login-status").textContent = "Error: " + e.message;
+  }
 }
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
@@ -1027,7 +1147,7 @@ function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").re
 async function loadStats() {
   try {
     const data = await fetch("/api/stats").then(r => r.json());
-    if (!data.ok) return;
+    if (!data.ok) { if (data.error === "TOKEN_EXPIRED") setError("TOKEN_EXPIRED"); return; }
     const s = data.stats;
 
     // PRs Activos
@@ -1144,6 +1264,46 @@ async function loadBlockedAuthors() {
   } catch(e) {}
 }
 
+async function openNewBranchModal() {
+  const sel = document.getElementById("modal-branch-base");
+  sel.innerHTML = ["develop","develop-pr","releaseproyecto/r6"].map(b => `<option value="${b}">${b}</option>`).join("");
+  document.getElementById("modal-branch-name").value = "";
+  document.getElementById("modal-branch-status").textContent = "";
+  document.getElementById("new-branch-modal").classList.add("open");
+  document.getElementById("modal-branch-name").focus();
+}
+
+function closeNewBranchModal() {
+  document.getElementById("new-branch-modal").classList.remove("open");
+}
+
+async function submitNewBranch() {
+  const name = document.getElementById("modal-branch-name").value.trim();
+  const base = document.getElementById("modal-branch-base").value;
+  const status = document.getElementById("modal-branch-status");
+  if (!name) { document.getElementById("modal-branch-name").focus(); return; }
+  status.style.color = "var(--muted)";
+  status.textContent = lang === 'es' ? "Creando..." : "Creating...";
+  try {
+    const res = await fetch("/api/branch/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, base })
+    }).then(r => r.json());
+    if (res.ok) {
+      status.style.color = "var(--green)";
+      status.textContent = lang === 'es' ? `✓ Rama "${name}" creada desde "${base}"` : `✓ Branch "${name}" created from "${base}"`;
+      document.getElementById("modal-branch-name").value = "";
+    } else {
+      status.style.color = "var(--red)";
+      status.textContent = `✗ ${res.error}`;
+    }
+  } catch(e) {
+    status.style.color = "var(--red)";
+    status.textContent = `✗ ${e.message}`;
+  }
+}
+
 function renderBlockedAuthors() {
   const container = document.getElementById("blocked-authors-list");
   container.innerHTML = blockedAuthors.length
@@ -1245,8 +1405,27 @@ loadAutoApproveConfig();
 loadBlockedAuthors();
 loadBlockedBranches();
 applyI18n();
-loadActivos();
-setTimeout(loadStats, 1500);
+
+// ── Loading overlay ──────────────────────────────────────────────────────────
+(function() {
+  const bar = document.getElementById("top-bar");
+  let pct = 0;
+  const ticker = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 12, 90);
+    bar.style.width = pct + "%";
+  }, 300);
+  window._loadingDone = function() {
+    clearInterval(ticker);
+    bar.style.width = "100%";
+    setTimeout(() => { bar.style.opacity = "0"; bar.style.transition = "opacity .4s"; }, 400);
+  };
+})();
+
+Promise.all([
+  loadActivos(),
+  new Promise(r => setTimeout(() => loadStats().then(r).catch(r), 500)),
+]).finally(window._loadingDone);
+
 setInterval(reload, 60000);
 setInterval(loadStats, 120000);
 </script>
