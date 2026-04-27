@@ -367,7 +367,7 @@ def find_pr_thread(pr_id, save_if_found=False):
     return None
 
 
-def wait_for_pr_thread(pr_id, interval=15, max_wait=600):
+def wait_for_pr_thread(pr_id, interval=5, max_wait=30):
     """Espera hasta max_wait segundos a que aparezca el hilo del PR en Slack."""
     elapsed = 0
     while elapsed < max_wait:
@@ -658,18 +658,20 @@ def get_prs():
                     conflicts_notified.append(int(pr_id))
                     save_state(state)
             if should_notify:
-                try:
-                    thread_ts = wait_for_pr_thread(int(pr_id))
-                    if thread_ts:
-                        slack_api("chat.postMessage", {
-                            "channel": SLACK_PR_CHANNEL,
-                            "thread_ts": thread_ts,
-                            "text": "⚠️ ¡Por favor resolver conflicto!"
-                        })
-                    else:
-                        logger.warning("[conflicts] PR %s: hilo no encontrado, no se notificó", pr_id)
-                except Exception:
-                    pass
+                def _notify_conflict():
+                    try:
+                        thread_ts = wait_for_pr_thread(int(pr_id))
+                        if thread_ts:
+                            slack_api("chat.postMessage", {
+                                "channel": SLACK_PR_CHANNEL,
+                                "thread_ts": thread_ts,
+                                "text": "⚠️ ¡Por favor resolver conflicto!"
+                            })
+                        else:
+                            logger.warning("[conflicts] PR %s: hilo no encontrado, no se notificó", pr_id)
+                    except Exception:
+                        pass
+                threading.Thread(target=_notify_conflict, daemon=True).start()
         elif policy_status == "failed":
             report["verdict"] = "evaluar check"
             with _state_lock:
@@ -679,18 +681,20 @@ def get_prs():
                     check_notified.append(int(pr_id))
                     save_state(state)
             if should_notify_check:
-                try:
-                    thread_ts = wait_for_pr_thread(int(pr_id))
-                    if thread_ts:
-                        slack_api("chat.postMessage", {
-                            "channel": SLACK_PR_CHANNEL,
-                            "thread_ts": thread_ts,
-                            "text": "🔍 Por favor verifica el check del Pull Request"
-                        })
-                    else:
-                        logger.warning("[check] PR %s: hilo no encontrado, no se notificó", pr_id)
-                except Exception:
-                    pass
+                def _notify_check():
+                    try:
+                        thread_ts = wait_for_pr_thread(int(pr_id))
+                        if thread_ts:
+                            slack_api("chat.postMessage", {
+                                "channel": SLACK_PR_CHANNEL,
+                                "thread_ts": thread_ts,
+                                "text": "🔍 Por favor verifica el check del Pull Request"
+                            })
+                        else:
+                            logger.warning("[check] PR %s: hilo no encontrado, no se notificó", pr_id)
+                    except Exception:
+                        pass
+                threading.Thread(target=_notify_check, daemon=True).start()
         elif policy_status == "running" and report["verdict"] not in ("rechazar", "revisar") and report["myVote"] != "approved":
             report["verdict"] = "posible aprobación"
 
@@ -726,32 +730,39 @@ def get_prs():
                         ], capture_output=True, text=True)
                         if result.returncode == 0:
                             logger.info("[auto-approve] PR %s aprobado automáticamente", pr_id)
-                            thread_ts = wait_for_pr_thread(int(pr_id), interval=10, max_wait=300)
-                            if thread_ts:
-                                try:
-                                    slack_api("chat.postMessage", {
-                                        "channel": SLACK_PR_CHANNEL,
-                                        "thread_ts": thread_ts,
-                                        "text": "✅ Aprobado"
-                                    })
-                                except Exception as se:
-                                    logger.error("[auto-approve] Error notificando Slack PR %s: %s", pr_id, se)
-                            else:
-                                logger.warning("[auto-approve] PR %s: hilo no encontrado, no se notificó", pr_id)
-                            # Notificar al TA para que revise
-                            ta_notified = state.setdefault("ta_notified", [])
-                            if int(pr_id) not in ta_notified and thread_ts:
-                                try:
-                                    mentions = get_pr_ta_reviewers(int(pr_id))
-                                    text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
-                                    slack_api("chat.postMessage", {
-                                        "channel": SLACK_PR_CHANNEL,
-                                        "thread_ts": thread_ts,
-                                        "text": text
-                                    })
-                                    ta_notified.append(int(pr_id))
-                                except Exception as te:
-                                    logger.error("[auto-approve] Error notificando TA PR %s: %s", pr_id, te)
+                            
+                            def _notify_auto_approve():
+                                thread_ts = wait_for_pr_thread(int(pr_id))
+                                if thread_ts:
+                                    try:
+                                        slack_api("chat.postMessage", {
+                                            "channel": SLACK_PR_CHANNEL,
+                                            "thread_ts": thread_ts,
+                                            "text": "✅ Aprobado"
+                                        })
+                                    except Exception as se:
+                                        logger.error("[auto-approve] Error notificando Slack PR %s: %s", pr_id, se)
+                                    
+                                    # Notificar al TA para que revise
+                                    ta_notified = state.setdefault("ta_notified", [])
+                                    if int(pr_id) not in ta_notified:
+                                        try:
+                                            mentions = get_pr_ta_reviewers(int(pr_id))
+                                            text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
+                                            slack_api("chat.postMessage", {
+                                                "channel": SLACK_PR_CHANNEL,
+                                                "thread_ts": thread_ts,
+                                                "text": text
+                                            })
+                                            with _state_lock:
+                                                ta_notified.append(int(pr_id))
+                                                save_state(state)
+                                        except Exception as te:
+                                            logger.error("[auto-approve] Error notificando TA PR %s: %s", pr_id, te)
+                                else:
+                                    logger.warning("[auto-approve] PR %s: hilo no encontrado, no se notificó", pr_id)
+                            
+                            threading.Thread(target=_notify_auto_approve, daemon=True).start()
                             auto_approved.append(int(pr_id))
                             report["myVote"] = "approved"
                             report["canComplete"] = True
