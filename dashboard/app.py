@@ -130,7 +130,7 @@ def _sheet_append_pr(pr_data, auto_approved=False, approval_date=""):
                     body={"values": [row]},
                 ).execute()
                 logger.info("[sheets] PR %s registrado correctamente", pr_id)
-            _retry(_do, retries=3, label="sheets.append")
+            _retry(_do, retries=2, label="sheets.append")
         except Exception as e:
             logger.error("[sheets] append error definitivo para PR %s: %s",
                          pr_data.get("pullRequestId") or pr_data.get("id"), e)
@@ -172,7 +172,7 @@ def _sheet_update_deploy(pr_id, deploy_status, deploy_date=""):
                         valueInputOption="RAW", body={"values": vals},
                     ).execute()
                 logger.info("[sheets] Deploy de PR %s actualizado: %s", pr_id, deploy_status)
-            _retry(_do, retries=3, label="sheets.update_deploy")
+            _retry(_do, retries=2, label="sheets.update_deploy")
         except Exception as e:
             logger.error("[sheets] update deploy error definitivo para PR %s: %s", pr_id, e)
     threading.Thread(target=_run, daemon=True).start()
@@ -288,7 +288,7 @@ def _validate_date(s):
     return s
 
 # ── Retry con backoff exponencial ─────────────────────────────────────────────
-def _retry(fn, retries=3, base_delay=2, label=""):
+def _retry(fn, retries=2, base_delay=0.5, label=""):
     """Ejecuta fn con reintentos y backoff exponencial."""
     for attempt in range(retries):
         try:
@@ -298,7 +298,7 @@ def _retry(fn, retries=3, base_delay=2, label=""):
                 logger.error("[retry:%s] Falló tras %d intentos: %s", label, retries, e)
                 raise
             delay = base_delay * (2 ** attempt)
-            logger.warning("[retry:%s] Intento %d/%d falló (%s). Reintentando en %ds...",
+            logger.warning("[retry:%s] Intento %d/%d falló (%s). Reintentando en %.1fs...",
                            label, attempt + 1, retries, e, delay)
             time.sleep(delay)
 
@@ -317,12 +317,12 @@ def slack_api(method, payload):
             data=data,
             headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
         )
-        with urlopen(req, timeout=10) as r:
+        with urlopen(req, timeout=5) as r:
             resp = json.loads(r.read())
         if not resp.get("ok"):
             raise RuntimeError(f"Slack API error [{method}]: {resp.get('error', 'unknown')}")
         return resp
-    return _retry(_call, retries=3, label=f"slack.{method}")
+    return _retry(_call, retries=2, label=f"slack.{method}")
 
 
 def find_pr_thread(pr_id, save_if_found=False):
@@ -458,9 +458,9 @@ def get_deploy_status(pr_id, merge_commit=None, closed_date=None, target_branch=
 def _api_azure(url, token):
     def _call():
         req = Request(url, headers={"Authorization": f"Bearer {token}"})
-        with urlopen(req, timeout=15) as r:
+        with urlopen(req, timeout=5) as r:
             return json.loads(r.read())
-    return _retry(_call, retries=3, label="azure_api")
+    return _retry(_call, retries=2, label="azure_api")
 
 
 def _release_status(release):
@@ -522,12 +522,12 @@ def get_pr_approval_date(pr_id, token):
     try:
         url = f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}/pullRequests/{pr_id}/reviewers?api-version=7.1"
         req = Request(url, headers={"Authorization": f"Bearer {token}"})
-        with urlopen(req, timeout=15) as r:
+        with urlopen(req, timeout=5) as r:
             data = json.loads(r.read())
         # Buscar en threads de votos la fecha más temprana de aprobación
         threads_url = f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}/pullRequests/{pr_id}/threads?api-version=7.1"
         req2 = Request(threads_url, headers={"Authorization": f"Bearer {token}"})
-        with urlopen(req2, timeout=15) as r2:
+        with urlopen(req2, timeout=5) as r2:
             threads = json.loads(r2.read())
         dates = []
         for t in threads.get("value", []):
@@ -541,16 +541,21 @@ def get_pr_approval_date(pr_id, token):
         return ""
 
 
+# ── Cache para project_id ────────────────────────────────────────────────────
+_project_id_cache = None
+
 def get_pr_policy_status(pr_id, token):
+    global _project_id_cache
     try:
-        project_id = run([
-            "az", "devops", "project", "show",
-            "--project", PROJECT, "--org", ORG_URL, "--query", "id", "-o", "tsv"
-        ]).strip()
-        artifact_id = f"vstfs:///CodeReview/CodeReviewId/{project_id}/{pr_id}"
+        if _project_id_cache is None:
+            _project_id_cache = run([
+                "az", "devops", "project", "show",
+                "--project", PROJECT, "--org", ORG_URL, "--query", "id", "-o", "tsv"
+            ]).strip()
+        artifact_id = f"vstfs:///CodeReview/CodeReviewId/{_project_id_cache}/{pr_id}"
         url = f"{ORG_URL}/{PROJECT}/_apis/policy/evaluations?artifactId={quote(artifact_id, safe='')}&api-version=7.1-preview.1"
         req = Request(url, headers={"Authorization": f"Bearer {token}"})
-        with urlopen(req, timeout=15) as r:
+        with urlopen(req, timeout=5) as r:
             data = json.loads(r.read())
         statuses = [e.get("status") for e in data.get("value", [])]
         if not statuses:
@@ -632,7 +637,7 @@ def get_prs():
         report["_targetRefName"] = pr.get("targetRefName", "")
         return report
 
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         futures = {executor.submit(_collect_pr_data, pr): pr for pr in prs}
         collected = []
         for future in as_completed(futures):
@@ -1406,14 +1411,43 @@ def export_sheets():
 LOCAL_REPO = Path("/home/zen6/cc/SalesForce")
 
 def _git_fetch_loop():
-    """Hace git fetch cada 5 minutos para mantener el repo local actualizado."""
+    """Hace git fetch cada 5 minutos usando el token de az cli para autenticación."""
     while True:
         try:
-            subprocess.run(["git", "-C", str(LOCAL_REPO), "fetch", "origin", "--prune"],
-                           capture_output=True, timeout=300)
-            logger.info("[git-fetch] fetch completado")
+            # Obtener token de az cli (mismo que usa el resto de la app)
+            tok = subprocess.run(
+                ["az", "account", "get-access-token",
+                 "--resource", "499b84ac-1321-427f-aa17-267ca6975798", "-o", "json"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if tok.returncode != 0:
+                logger.debug("[git-fetch] no se pudo obtener token az, omitiendo fetch")
+                time.sleep(300)
+                continue
+
+            access_token = json.loads(tok.stdout).get("accessToken", "")
+            # Pasar credencial via credential helper que responde con el token
+            credential_script = f"#!/bin/sh\necho username=x-access-token\necho password={access_token}\n"
+            cred_path = Path("/tmp/_git_cred_helper.sh")
+            cred_path.write_text(credential_script)
+            cred_path.chmod(0o700)
+
+            result = subprocess.run(
+                ["git", "-C", str(LOCAL_REPO),
+                 "-c", f"credential.helper={cred_path}",
+                 "fetch", "origin", "--prune"],
+                capture_output=True, timeout=30,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+            )
+            if result.returncode == 0:
+                logger.info("[git-fetch] fetch completado")
+            else:
+                logger.debug("[git-fetch] fetch falló (rc=%d): %s",
+                             result.returncode, result.stderr.decode().strip())
+        except subprocess.TimeoutExpired:
+            logger.debug("[git-fetch] timeout, se reintentará en 5 min")
         except Exception as e:
-            logger.warning("[git-fetch] error: %s", e)
+            logger.debug("[git-fetch] error: %s", e)
         time.sleep(300)
 
 

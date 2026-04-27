@@ -30,7 +30,7 @@ def get_token():
 def api_json(path, token):
     url = f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPO_ID}{path}"
     req = Request(url, headers={"Authorization": f"Bearer {token}"})
-    with urlopen(req, timeout=90) as resp:
+    with urlopen(req, timeout=8) as resp:
         return json.loads(resp.read().decode("utf-8", "replace"))
 
 
