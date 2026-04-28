@@ -247,7 +247,7 @@ def component_in_datapack_manifest(target_ref, release_key, datatype, folder):
     # El manifest lista entradas como "DataRaptor/MiComponente" o "dataPack/DataRaptor/MiComponente"
     # Buscar coincidencia exacta de datatype/folder como ítem de lista
     pattern = re.compile(
-        r"^\s*-\s+(?:dataPack/)?" + re.escape(datatype) + r"/" + re.escape(folder) + r"\s*$",
+        r"^\s*-\s+" + re.escape(datatype) + r"/" + re.escape(folder) + r"\s*$",
         re.IGNORECASE | re.MULTILINE,
     )
     for candidate in datapack_manifest_candidates(release_key, datatype):
