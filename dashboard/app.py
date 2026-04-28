@@ -579,18 +579,14 @@ def _check_token():
     """Obtiene el token y verifica que no esté expirado."""
     try:
         token = get_token()
-        # Verificar que el token funciona con una llamada mínima
-        result = subprocess.run(
-            ["az", "account", "get-access-token", "--resource", "499b84ac-1321-427f-aa17-267ca6975798", "-o", "json"],
-            capture_output=True, text=True
-        )
-        if result.returncode != 0 or "AADSTS" in (result.stderr or "") or "Please run" in (result.stderr or ""):
+        if not token:
             raise TokenExpiredError("Token de Azure expirado")
         return token
     except TokenExpiredError:
         raise
     except Exception as e:
-        if "AADSTS" in str(e) or "Please run" in str(e) or "az login" in str(e):
+        err = str(e)
+        if "AADSTS" in err or "Please run" in err or "az login" in err or "token" in err.lower():
             raise TokenExpiredError("Token de Azure expirado")
         raise
 
@@ -637,7 +633,7 @@ def get_prs():
         report["_targetRefName"] = pr.get("targetRefName", "")
         return report
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {executor.submit(_collect_pr_data, pr): pr for pr in prs}
         collected = []
         for future in as_completed(futures):
@@ -646,6 +642,7 @@ def get_prs():
                 collected.append(result)
 
     reports = []
+    auto_cfg = load_auto_approve_config()
     for report in collected:
         pr_id = str(report["id"])
         policy_status = report["policyStatus"]
@@ -704,7 +701,6 @@ def get_prs():
             report["verdict"] = "TA Reviewer"
 
         # Auto-aprobación
-        auto_cfg = load_auto_approve_config()
         target_branch = normalize_ref(report.pop("_targetRefName", ""))
         if (
             auto_cfg.get("enabled")
