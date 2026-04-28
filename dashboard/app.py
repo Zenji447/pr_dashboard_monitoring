@@ -437,6 +437,25 @@ def get_pr_ta_reviewers(pr_id, only_pending=True):
         return []
 
 
+_releases_cache = {"data": None, "ts": 0.0}
+_releases_cache_lock = threading.Lock()
+_RELEASES_TTL = 30  # segundos
+
+
+def _get_releases_cached(token):
+    """Devuelve la lista de releases cacheada; refresca si expiró."""
+    with _releases_cache_lock:
+        if time.time() - _releases_cache["ts"] < _RELEASES_TTL and _releases_cache["data"] is not None:
+            return _releases_cache["data"]
+    org_name = ORG_URL.rstrip("/").split("/")[-1]
+    vsrm = f"https://vsrm.dev.azure.com/{org_name}/{PROJECT}"
+    releases = _api_azure(f"{vsrm}/_apis/release/releases?api-version=7.1&$top=50", token).get("value", [])
+    with _releases_cache_lock:
+        _releases_cache["data"] = releases
+        _releases_cache["ts"] = time.time()
+    return releases
+
+
 def get_deploy_status(pr_id, merge_commit=None, closed_date=None, target_branch=None):
     """Busca el release asociado al PR via commit de merge o branch del PR.
     Retorna tupla (status, deploy_date) donde deploy_date es ISO string o ''.
@@ -445,19 +464,22 @@ def get_deploy_status(pr_id, merge_commit=None, closed_date=None, target_branch=
         token = get_token()
         org_name = ORG_URL.rstrip("/").split("/")[-1]
         vsrm = f"https://vsrm.dev.azure.com/{org_name}/{PROJECT}"
-        releases = _api_azure(f"{vsrm}/_apis/release/releases?api-version=7.1&$top=50", token).get("value", [])
+        releases = _get_releases_cached(token)
         pr_branch = f"refs/pull/{pr_id}/merge"
 
-        for rel in releases:
-            detail = _api_azure(f"{vsrm}/_apis/release/releases/{rel['id']}?api-version=7.1", token)
+        def _fetch_detail(rel):
+            return _api_azure(f"{vsrm}/_apis/release/releases/{rel['id']}?api-version=7.1", token)
+
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            details = list(ex.map(_fetch_detail, releases))
+
+        for detail in details:
             for art in detail.get("artifacts", []):
                 ref    = art.get("definitionReference", {})
                 branch = ref.get("branch", {}).get("id", "")
                 commit = ref.get("sourceVersion", {}).get("id", "")
-                # Coincidencia exacta por PR branch (PR activo/CI)
                 if branch == pr_branch:
                     return _release_status(detail)
-                # Coincidencia exacta por commit de merge (PR completado)
                 if merge_commit and commit and commit == merge_commit:
                     return _release_status(detail)
         return "unknown", ""
