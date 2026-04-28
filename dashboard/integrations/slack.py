@@ -1,0 +1,101 @@
+import json
+import logging
+import os
+import threading
+import time
+from urllib.request import Request, urlopen
+
+from utils import retry
+
+logger = logging.getLogger("pr_dashboard")
+
+SLACK_TOKEN = os.getenv("SLACK_TOKEN")
+SLACK_PR_CHANNEL = os.getenv("SLACK_PR_CHANNEL", "C080K9D6EG2")
+
+TA_SLACK_IDS = {
+    "gustavo alonso muciño": "U06JUHG1G9Y",
+    "hugo revuelta":         "U07TQ8JNMBR",
+    "gabriel alvis":         "U066X49C5NZ",
+    "francisco zubizarreta": "U01LXV1UD3K",
+    "luís guilherme lino":   "U023L6SJVQW",
+    "luis guilherme lino":   "U023L6SJVQW",
+}
+
+
+def slack_api(method, payload):
+    def _call():
+        data = json.dumps(payload).encode()
+        req = Request(
+            f"https://slack.com/api/{method}",
+            data=data,
+            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
+        )
+        with urlopen(req, timeout=5) as r:
+            resp = json.loads(r.read())
+        if not resp.get("ok"):
+            raise RuntimeError(f"Slack API error [{method}]: {resp.get('error', 'unknown')}")
+        return resp
+    return retry(_call, retries=2, label=f"slack.{method}")
+
+
+def find_pr_thread(pr_id, save_if_found=False):
+    from integrations.state import load_state, save_state
+    state = load_state()
+    pr_threads = state.setdefault("pr_threads", {})
+    if str(pr_id) in pr_threads:
+        return pr_threads[str(pr_id)]
+    result = slack_api("conversations.history", {"channel": SLACK_PR_CHANNEL, "limit": 200})
+    needle = f"pullrequest/{pr_id}"
+    for msg in result.get("messages", []):
+        text_blob = json.dumps(msg)
+        if needle in text_blob:
+            thread_ts = msg["ts"]
+            if save_if_found:
+                pr_threads[str(pr_id)] = thread_ts
+                save_state(state)
+            return thread_ts
+    return None
+
+
+def wait_for_pr_thread(pr_id, interval=5, max_wait=30):
+    elapsed = 0
+    while elapsed < max_wait:
+        ts = find_pr_thread(pr_id, save_if_found=True)
+        if ts:
+            return ts
+        time.sleep(interval)
+        elapsed += interval
+    logger.warning("[slack] No se encontró hilo para PR %s tras %ds", pr_id, max_wait)
+    return None
+
+
+def notify_pr_slack(pr_id, action, detail=None):
+    labels = {
+        "approve":  "✅ Aprobado",
+        "reject":   "❌ Rechazado",
+        "complete": "🚀 PR integrado — si no hay conflicto el despliegue estará en curso, te avisamos cuando termine.",
+    }
+    text = labels.get(action, action)
+    if detail:
+        text += f"\n> {detail}"
+
+    def _send():
+        try:
+            elapsed = 0
+            max_wait = 1800
+            interval = 15
+            thread_ts = None
+            while elapsed < max_wait:
+                thread_ts = find_pr_thread(pr_id, save_if_found=True)
+                if thread_ts:
+                    break
+                time.sleep(interval)
+                elapsed += interval
+            if not thread_ts:
+                logger.warning("[slack] No se pudo notificar PR %s (acción: %s): hilo no encontrado", pr_id, action)
+                return
+            slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
+        except Exception as e:
+            logger.error("[slack] Error notificando PR %s (acción: %s): %s", pr_id, action, e)
+
+    threading.Thread(target=_send, daemon=True).start()
