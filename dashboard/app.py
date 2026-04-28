@@ -394,7 +394,7 @@ def notify_pr_slack(pr_id, action, detail=None):
         try:
             # Reintentar hasta 10 minutos esperando que el dev publique el hilo
             elapsed = 0
-            max_wait = 600  # 10 minutos
+            max_wait = 1800  # 30 minutos
             interval = 15
             thread_ts = None
             while elapsed < max_wait:
