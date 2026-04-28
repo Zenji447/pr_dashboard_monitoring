@@ -392,9 +392,19 @@ def notify_pr_slack(pr_id, action, detail=None):
 
     def _send():
         try:
-            thread_ts = wait_for_pr_thread(pr_id)
+            # Reintentar hasta 10 minutos esperando que el dev publique el hilo
+            elapsed = 0
+            max_wait = 600  # 10 minutos
+            interval = 15
+            thread_ts = None
+            while elapsed < max_wait:
+                thread_ts = find_pr_thread(pr_id, save_if_found=True)
+                if thread_ts:
+                    break
+                time.sleep(interval)
+                elapsed += interval
             if not thread_ts:
-                logger.warning("[slack] No se pudo notificar PR %s (acción: %s): hilo no encontrado", pr_id, action)
+                logger.warning("[slack] No se pudo notificar PR %s (acción: %s): hilo no encontrado tras %ds", pr_id, action, max_wait)
                 return
             slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
         except Exception as e:
