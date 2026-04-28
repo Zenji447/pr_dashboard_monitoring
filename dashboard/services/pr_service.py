@@ -165,6 +165,17 @@ def _fetch_prs():
         ):
             _try_auto_approve(pr_id, report, state, token)
 
+        # Auto-complete
+        if (
+            target_branch in {"develop", "develop-pr", "releaseproyecto/r6"}
+            and report["myVote"] == "approved"
+            and report["canComplete"]
+            and not report["hasConflicts"]
+            and not report["blocked"]
+            and not report["frozen"]
+        ):
+            _try_auto_complete(pr_id, report, state, token)
+
         reports.append(report)
 
     save_state(state)
@@ -180,7 +191,66 @@ def _notify_once(state, key, pr_id, fn):
         threading.Thread(target=fn, daemon=True).start()
 
 
-def _notify_conflict(pr_id):
+def _try_auto_complete(pr_id, report, state, token):
+    from integrations.azure import complete_pr, get_pr_approval_date, get_pr_policy_status
+    from services.deploy_service import poll_deploy_background
+    from services.sheets_service import append_pr
+
+    auto_completed = state.setdefault("auto_completed", [])
+    if int(pr_id) in auto_completed:
+        return
+    result = complete_pr(pr_id)
+    if result.returncode != 0:
+        logger.warning("[auto-complete] Falló PR %s: %s", pr_id, result.stderr or result.stdout)
+        return
+    logger.info("[auto-complete] PR %s completado automáticamente", pr_id)
+    auto_completed.append(int(pr_id))
+
+    import json
+    pr_data = {}
+    if result.stdout.strip().startswith("{"):
+        try:
+            pr_data = json.loads(result.stdout)
+        except Exception:
+            pass
+
+    merge_commit  = pr_data.get("lastMergeCommit", {}).get("commitId")
+    closed_date   = pr_data.get("closedDate", "")
+    target_branch = pr_data.get("targetRefName", "")
+    author        = pr_data.get("createdBy", {}).get("displayName", "")
+
+    poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, author=author)
+
+    approval_date = get_pr_approval_date(pr_id, token)
+    policy_status = get_pr_policy_status(pr_id, token)
+    sheet_pr = {
+        "pullRequestId": pr_id,
+        "title": pr_data.get("title", report.get("title", "")),
+        "createdBy": author or report.get("createdBy", ""),
+        "targetRefName": target_branch,
+        "creationDate": pr_data.get("creationDate", report.get("creationDate", "")),
+        "closedDate": closed_date,
+        "hasConflicts": pr_data.get("mergeStatus") == "conflicts",
+        "policyStatus": policy_status,
+    }
+    append_pr(sheet_pr, auto_approved=int(pr_id) in state.get("auto_approved", []), approval_date=approval_date)
+
+    def _notify():
+        thread_ts = wait_for_pr_thread(int(pr_id))
+        if thread_ts:
+            try:
+                slack_api("chat.postMessage", {
+                    "channel": SLACK_PR_CHANNEL,
+                    "thread_ts": thread_ts,
+                    "text": "🚀 PR integrado — si no hay conflicto el despliegue estará en curso, te avisamos cuando termine.",
+                })
+            except Exception as e:
+                logger.error("[auto-complete] Slack PR %s: %s", pr_id, e)
+
+    threading.Thread(target=_notify, daemon=True).start()
+
+
+
     try:
         thread_ts = wait_for_pr_thread(int(pr_id))
         if thread_ts:
