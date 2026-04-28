@@ -575,23 +575,96 @@ class TokenExpiredError(Exception):
     pass
 
 
+# ── Caché de token Azure (expira en ~55 min para renovar antes del límite de 1h) ──
+_token_cache = {"value": None, "expires_at": 0.0}
+_token_lock = threading.Lock()
+
 def _check_token():
-    """Obtiene el token y verifica que no esté expirado."""
+    """Devuelve el token cacheado; lo renueva solo si está por expirar."""
+    with _token_lock:
+        if time.time() < _token_cache["expires_at"]:
+            return _token_cache["value"]
     try:
         token = get_token()
         if not token:
             raise TokenExpiredError("Token de Azure expirado")
+        with _token_lock:
+            _token_cache["value"] = token
+            _token_cache["expires_at"] = time.time() + 3300  # 55 minutos
         return token
     except TokenExpiredError:
         raise
     except Exception as e:
         err = str(e)
         if "AADSTS" in err or "Please run" in err or "az login" in err or "token" in err.lower():
+            with _token_lock:
+                _token_cache["value"] = None
+                _token_cache["expires_at"] = 0.0
             raise TokenExpiredError("Token de Azure expirado")
         raise
 
 
+# ── Caché de PRs activos con refresh en background ───────────────────────────
+_prs_cache = {"data": None, "ts": 0.0, "error": None, "refreshing": False}
+_prs_cache_lock = threading.Lock()
+_PRS_TTL = 30  # segundos antes de refrescar en background
+
+
+def _refresh_prs_background():
+    """Refresca el caché de PRs en un thread daemon."""
+    def _run():
+        try:
+            fresh = _fetch_prs()
+            with _prs_cache_lock:
+                _prs_cache["data"] = fresh
+                _prs_cache["ts"] = time.time()
+                _prs_cache["error"] = None
+        except TokenExpiredError as e:
+            with _prs_cache_lock:
+                _prs_cache["error"] = "TOKEN_EXPIRED"
+        except Exception as e:
+            logger.error("[prs-cache] Error refrescando PRs: %s", e)
+            with _prs_cache_lock:
+                _prs_cache["error"] = str(e)
+        finally:
+            with _prs_cache_lock:
+                _prs_cache["refreshing"] = False
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def get_prs():
+    """Devuelve PRs desde caché; dispara refresh en background si el caché es viejo."""
+    with _prs_cache_lock:
+        cached = _prs_cache["data"]
+        age = time.time() - _prs_cache["ts"]
+        error = _prs_cache["error"]
+        refreshing = _prs_cache["refreshing"]
+
+    # Si hay error de token, propagarlo siempre
+    if error == "TOKEN_EXPIRED":
+        raise TokenExpiredError("Token de Azure expirado")
+
+    # Si el caché es válido, devolverlo y refrescar en background si ya envejeció
+    if cached is not None:
+        if age > _PRS_TTL and not refreshing:
+            with _prs_cache_lock:
+                _prs_cache["refreshing"] = True
+            _refresh_prs_background()
+        return cached
+
+    # Primera carga: bloquear y esperar
+    with _prs_cache_lock:
+        if not _prs_cache["refreshing"]:
+            _prs_cache["refreshing"] = True
+    result = _fetch_prs()
+    with _prs_cache_lock:
+        _prs_cache["data"] = result
+        _prs_cache["ts"] = time.time()
+        _prs_cache["refreshing"] = False
+    return result
+
+
+def _fetch_prs():
     try:
         token = _check_token()
     except TokenExpiredError:
@@ -833,6 +906,12 @@ def auth_login():
             "az", "login", "--allow-no-subscriptions",
             "--tenant", "46bb22b8-4c2c-40ff-8360-7b6334821279"
         ])
+        # Invalidar caché de token y PRs tras reautenticar
+        with _token_lock:
+            _token_cache["value"] = None
+            _token_cache["expires_at"] = 0.0
+        with _prs_cache_lock:
+            _prs_cache["ts"] = 0.0
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"ok": True})
 
@@ -974,6 +1053,8 @@ def approve(pr_id):
                 logger.error("[approve] Error notificando TA para PR %s: %s", pr_id, e)
         threading.Thread(target=_notify_ta, daemon=True).start()
         logger.info("[approve] PR %s aprobado", pr_id)
+        with _prs_cache_lock:
+            _prs_cache["ts"] = 0.0  # invalidar caché
         return jsonify({"ok": True, "ta_notified": True})
     except Exception as e:
         logger.error("[approve] PR %s excepción: %s", pr_id, e, exc_info=True)
@@ -1002,6 +1083,8 @@ def reject(pr_id):
         ])
         notify_pr_slack(pr_id, "reject", comment)
         logger.info("[reject] PR %s rechazado", pr_id)
+        with _prs_cache_lock:
+            _prs_cache["ts"] = 0.0  # invalidar caché
         return jsonify({"ok": True})
     except Exception as e:
         logger.error("[reject] PR %s excepción: %s", pr_id, e, exc_info=True)
@@ -1099,6 +1182,8 @@ def complete(pr_id):
         }
         _sheet_append_pr(sheet_pr, auto_approved=pr_id in state.get("auto_approved", []), approval_date=approval_date)
         logger.info("[complete] PR %s completado", pr_id)
+        with _prs_cache_lock:
+            _prs_cache["ts"] = 0.0  # invalidar caché
         return jsonify({"ok": True})
     except Exception as e:
         logger.error("[complete] PR %s excepción: %s", pr_id, e, exc_info=True)
