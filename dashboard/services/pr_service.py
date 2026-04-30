@@ -214,10 +214,10 @@ def _try_auto_complete(pr_id, report, state, token):
         except Exception:
             pass
 
-    merge_commit  = pr_data.get("lastMergeCommit", {}).get("commitId")
+    merge_commit  = (pr_data.get("lastMergeCommit") or {}).get("commitId")
     closed_date   = pr_data.get("closedDate", "")
     target_branch = pr_data.get("targetRefName", "")
-    author        = pr_data.get("createdBy", {}).get("displayName", "")
+    author        = (pr_data.get("createdBy") or {}).get("displayName", "")
 
     poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, author=author)
 
