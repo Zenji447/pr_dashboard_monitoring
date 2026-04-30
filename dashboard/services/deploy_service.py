@@ -13,6 +13,10 @@ _releases_cache = {"data": None, "ts": 0.0}
 _releases_cache_lock = threading.Lock()
 _RELEASES_TTL = 30
 
+# Lock para evitar notificaciones duplicadas de deploy
+_deploy_notify_lock = threading.Lock()
+_deploy_notified_memory = set()  # guard en memoria para la sesión actual
+
 
 def _get_releases_cached(token):
     with _releases_cache_lock:
@@ -124,6 +128,10 @@ def poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, auth
             try:
                 status, deploy_date_bg = get_deploy_status(pr_id, merge_commit, closed_date, target_branch)
                 if status in ("succeeded", "failed"):
+                    with _deploy_notify_lock:
+                        if int(pr_id) in _deploy_notified_memory:
+                            return  # ya notificado en esta sesión
+                        _deploy_notified_memory.add(int(pr_id))
                     state = load_state()
                     deploy_notified = state.setdefault("deploy_notified", [])
                     already = int(pr_id) in [int(x) for x in deploy_notified]
@@ -133,12 +141,13 @@ def poll_deploy_background(pr_id, merge_commit, closed_date, target_branch, auth
                     if not already and not (author and author.lower().strip() in [a.lower().strip() for a in load_blocked_authors()]):
                         text = "✅ Despliegue completado" if status == "succeeded" else "❌ Despliegue fallido"
                         thread_ts = find_pr_thread(pr_id, save_if_found=True)
-                        if not thread_ts:
-                            continue
-                        try:
-                            slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
-                        except Exception as se:
-                            logger.error("[deploy-poll] Error Slack PR %s: %s", pr_id, se)
+                        if thread_ts:
+                            try:
+                                slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
+                            except Exception as se:
+                                logger.error("[deploy-poll] Error Slack PR %s: %s", pr_id, se)
+                        else:
+                            logger.warning("[deploy-poll] PR %s: hilo no encontrado para notificar deploy", pr_id)
                     final_date = deploy_date_bg or datetime.now(timezone.utc).isoformat()
                     update_deploy(pr_id, status, final_date)
                     return

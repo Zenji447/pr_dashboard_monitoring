@@ -12,6 +12,10 @@ logger = logging.getLogger("pr_dashboard")
 SLACK_TOKEN = os.getenv("SLACK_TOKEN")
 SLACK_PR_CHANNEL = os.getenv("SLACK_PR_CHANNEL", "C080K9D6EG2")
 
+# Guard en memoria para evitar notificaciones duplicadas en la misma sesión
+_notified_lock = threading.Lock()
+_notified_memory = set()  # (pr_id, action)
+
 TA_SLACK_IDS = {
     "gustavo alonso muciño": "U06JUHG1G9Y",
     "hugo revuelta":         "U07TQ8JNMBR",
@@ -70,6 +74,14 @@ def wait_for_pr_thread(pr_id, interval=5, max_wait=30):
 
 
 def notify_pr_slack(pr_id, action, detail=None):
+    # Guard: evitar duplicados para la misma acción en la misma sesión
+    key = (int(pr_id), action)
+    with _notified_lock:
+        if key in _notified_memory:
+            logger.info("[slack] Notificación duplicada ignorada PR %s acción %s", pr_id, action)
+            return
+        _notified_memory.add(key)
+
     labels = {
         "approve":  "✅ Aprobado",
         "reject":   "❌ Rechazado",
@@ -95,7 +107,11 @@ def notify_pr_slack(pr_id, action, detail=None):
                 logger.warning("[slack] No se pudo notificar PR %s (acción: %s): hilo no encontrado", pr_id, action)
                 return
             slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
+            logger.info("[slack] Notificación enviada PR %s acción %s", pr_id, action)
         except Exception as e:
             logger.error("[slack] Error notificando PR %s (acción: %s): %s", pr_id, action, e)
+            # Si falla, remover del guard para permitir reintento
+            with _notified_lock:
+                _notified_memory.discard(key)
 
     threading.Thread(target=_send, daemon=True).start()
