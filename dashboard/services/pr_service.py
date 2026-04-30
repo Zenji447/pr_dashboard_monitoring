@@ -135,12 +135,12 @@ def _fetch_prs():
         # Conflictos
         if report["hasConflicts"]:
             report["verdict"] = "resolver conflicto"
-            _notify_once(state, "conflicts_notified", int(pr_id), lambda: _notify_conflict(pr_id))
+            _notify_once(state, "conflicts_notified", int(pr_id), lambda pid=pr_id: _notify_conflict(pid))
 
         # Policy failed
         elif policy_status == "failed":
             report["verdict"] = "evaluar check"
-            _notify_once(state, "check_notified", int(pr_id), lambda: _notify_check(pr_id))
+            _notify_once(state, "check_notified", int(pr_id), lambda pid=pr_id: _notify_check(pid))
 
         elif policy_status == "running" and report["verdict"] not in ("rechazar", "revisar") and report["myVote"] != "approved":
             report["verdict"] = "posible aprobación"
