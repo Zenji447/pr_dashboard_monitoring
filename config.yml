@@ -1,0 +1,22 @@
+provider:
+  type: azure_devops
+  org_url: https://dev.azure.com/OrgClaroColombia
+  project: SalesForce
+  repository: SalesForce
+  extra:
+    watched_branches:
+      - develop
+      - develop-pr
+      - releaseproyecto/r6
+
+notifier:
+  type: slack
+  channel_id: C080K9D6EG2
+  token: xoxp-2013094397781-9421813286548-10859289172967-8f9937c7c7339b2e71409cfa493d256a
+  ta_users:
+    "gustavo alonso muciño": "U06JUHG1G9Y"
+    "hugo revuelta": "U07TQ8JNMBR"
+    "gabriel alvis": "U066X49C5NZ"
+    "francisco zubizarreta": "U01LXV1UD3K"
+    "luís guilherme lino": "U023L6SJVQW"
+    "luis guilherme lino": "U023L6SJVQW"
