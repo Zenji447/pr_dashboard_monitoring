@@ -519,7 +519,7 @@
     <h1 data-i18n="title">PR Dashboard — Salesforce</h1>
   </div>
   <div class="header-right">
-    <span class="header-badge">Azure DevOps</span>
+    <a class="header-badge" href="https://dev.azure.com/OrgClaroColombia/SalesForce/_git/SalesForce" target="_blank" rel="noopener" style="text-decoration:none;cursor:pointer;">Azure DevOps</a>
     <button id="lang-toggle" onclick="toggleLang()" style="background:none;border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:.75rem;font-weight:700">EN</button>
     <div class="spinner" id="spinner"></div>
     <span id="status" style="font-size:.78rem;color:#64748b"></span>
@@ -749,6 +749,14 @@
 </div>
 
 <script>
+  const API_KEY = localStorage.getItem("pr_dashboard_api_key") || "";
+
+  function apiHeaders(extra = {}) {
+    const headers = { ...extra };
+    if (API_KEY) headers["X-API-Key"] = API_KEY;
+    return headers;
+  }
+
   function toggleSection(header) {
     header.closest('.collapsible-section').classList.toggle('collapsed');
   }
@@ -1025,7 +1033,7 @@ async function vote(prId, action, btn) {
   const body = action === "reject" ? { comment: prompt("Motivo del rechazo:") || "PR rechazado tras revisión." } : {};
   try {
     const data = await fetch(`/api/pr/${prId}/${action}`, {
-      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)
+      method: "POST", headers: apiHeaders({"Content-Type":"application/json"}), body: JSON.stringify(body)
     }).then(r => r.json());
     if (!data.ok) throw new Error(data.error);
     if (action === "approve")  btn.textContent = "✓ Aprobado";
@@ -1039,7 +1047,7 @@ async function vote(prId, action, btn) {
       const freshPr = fresh?.prs?.find(p => p.id === prId);
       if (freshPr?.canComplete) {
         completeBtn.textContent = "⏳ Completando...";
-        const res = await fetch(`/api/pr/${prId}/complete`, { method: "POST" }).then(r => r.json());
+        const res = await fetch(`/api/pr/${prId}/complete`, { method: "POST", headers: apiHeaders() }).then(r => r.json());
         completeBtn.textContent = res.ok ? "⚡ Completado" : "⚠ " + res.error;
         if (!res.ok) completeBtn.disabled = false;
       } else {
@@ -1095,7 +1103,7 @@ async function pollDeploy(prId, closedDate, target, mergeCommit) {
     setTimeout(() => pollDeploy(prId, closedDate, target, mergeCommit), 60000);
   } else if (s === "succeeded" || s === "failed") {
     fetch(`/api/pr/${prId}/notify-deploy`, {
-      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({status: s})
+      method: "POST", headers: apiHeaders({"Content-Type":"application/json"}), body: JSON.stringify({status: s})
     });
   }
 }
@@ -1105,7 +1113,7 @@ async function autoComplete(prId) {
   if (_autoCompleted.has(prId)) return;
   _autoCompleted.add(prId);
   try {
-    const res = await fetch(`/api/pr/${prId}/complete`, { method: "POST" }).then(r => r.json());
+    const res = await fetch(`/api/pr/${prId}/complete`, { method: "POST", headers: apiHeaders() }).then(r => r.json());
     if (res.ok) { setTimeout(loadActivos, 2000); }
     else { _autoCompleted.delete(prId); }
   } catch { _autoCompleted.delete(prId); }
@@ -1237,7 +1245,7 @@ async function toggleBranch(branch) {
 async function saveAutoApproveConfig() {
   try {
     const res = await fetch("/api/config/auto-approve", {
-      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(autoConfig)
+      method: "POST", headers: apiHeaders({"Content-Type":"application/json"}), body: JSON.stringify(autoConfig)
     }).then(r => r.json());
     autoConfig = res.config;
     renderAutoApproveUI();
@@ -1287,7 +1295,7 @@ async function submitNewBranch() {
   try {
     const res = await fetch("/api/branch/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ name, base })
     }).then(r => r.json());
     if (res.ok) {
@@ -1331,7 +1339,7 @@ async function removeBlockedAuthor(name) {
 
 async function saveBlockedAuthors() {
   await fetch("/api/config/blocked-authors", {
-    method: "POST", headers: {"Content-Type":"application/json"},
+    method: "POST", headers: apiHeaders({"Content-Type":"application/json"}),
     body: JSON.stringify({ authors: blockedAuthors })
   });
   renderBlockedAuthors();
@@ -1374,7 +1382,7 @@ async function removeBlockedBranch(name) {
 
 async function saveBlockedBranches() {
   await fetch("/api/config/blocked-branches", {
-    method: "POST", headers: {"Content-Type":"application/json"},
+    method: "POST", headers: apiHeaders({"Content-Type":"application/json"}),
     body: JSON.stringify({ branches: blockedBranches })
   });
   renderBlockedBranches();
@@ -1388,7 +1396,7 @@ async function exportSheets() {
   btn.disabled = true; btn.textContent = "⏳ Exportando...";
   try {
     const res = await fetch("/api/prs/export-sheets", {
-      method: "POST", headers: {"Content-Type":"application/json"},
+      method: "POST", headers: apiHeaders({"Content-Type":"application/json"}),
       body: JSON.stringify({ from, to }),
     }).then(r => r.json());
     btn.textContent = res.ok ? `✅ ${res.rows} fila(s) exportadas` : "❌ Error";

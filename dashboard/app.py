@@ -49,21 +49,31 @@ logging.basicConfig(
 logger = logging.getLogger("pr_dashboard")
 
 API_KEY = os.getenv("API_KEY")
-if not API_KEY:
-    logger.warning("API_KEY no configurado — endpoints de acción sin protección")
+HOST = os.getenv("HOST", "127.0.0.1")
+PORT = int(os.getenv("PORT", "5000"))
+DEBUG = os.getenv("FLASK_DEBUG", os.getenv("DEBUG", "0")).lower() in {"1", "true", "yes", "on"}
 
 app = Flask(__name__)
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
+def _request_api_key():
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    return request.headers.get("X-API-Key") or request.args.get("api_key")
+
+
 def require_api_key(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if API_KEY:
-            key = request.headers.get("X-API-Key") or request.args.get("api_key")
-            if key != API_KEY:
-                return jsonify({"ok": False, "error": "No autorizado"}), 401
+        if not API_KEY:
+            logger.error("Intento de acceso a endpoint protegido sin API_KEY configurado")
+            return jsonify({"ok": False, "error": "API_KEY no configurada en el servidor"}), 503
+        key = _request_api_key()
+        if key != API_KEY:
+            return jsonify({"ok": False, "error": "No autorizado"}), 401
         return f(*args, **kwargs)
     return decorated
 
@@ -103,6 +113,7 @@ def health():
 
 
 @app.route("/api/auth/login", methods=["POST"])
+@require_api_key
 def auth_login():
     def _run():
         subprocess.run([
@@ -439,6 +450,7 @@ def api_branches():
 
 
 @app.route("/api/branch/create", methods=["POST"])
+@require_api_key
 def create_branch():
     try:
         data = request.get_json(silent=True) or {}
@@ -563,5 +575,8 @@ def _git_fetch_loop():
 
 
 if __name__ == "__main__":
+    if not API_KEY:
+        logger.error("API_KEY es obligatoria para arrancar el dashboard de forma segura")
+        sys.exit(1)
     threading.Thread(target=_git_fetch_loop, daemon=True).start()
-    app.run(host="0.0.0.0", debug=os.environ.get("FLASK_DEBUG", "0") == "1", port=5000, threaded=True)
+    app.run(host=HOST, debug=DEBUG, port=PORT, threaded=True)

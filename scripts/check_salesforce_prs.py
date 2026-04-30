@@ -376,7 +376,7 @@ def classify(pr, changes, token=None):
             if exists_in_target:
                 continue
             # Buscar package-metadata.xml en rama origen
-            if package_in_pr or (source_ref and component_in_forceapp_manifest(source_ref, release_key, member)[0]):
+            if source_ref and component_in_forceapp_manifest(source_ref, release_key, member)[0]:
                 continue
             # Si no está en origen, buscar en manifest del destino
             ok, manifest = component_in_forceapp_manifest(target_ref, release_key, member)
