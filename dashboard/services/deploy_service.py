@@ -55,19 +55,36 @@ def get_deploy_status(pr_id, merge_commit=None, closed_date=None, target_branch=
         return "unknown", ""
 
 
+def _is_checkonly_env(env):
+    """Retorna True si el environment es un artefacto/checkonly (falso positivo)."""
+    name = (env.get("name") or "").lower()
+    return "checkonly" in name or name.startswith("build")
+
+
 def _release_status(release):
     envs = release.get("environments", [])
     if not envs:
         return "unknown", ""
-    statuses = [e.get("status", "") for e in envs]
+
+    # Separar environments reales (excluir Checkonly y Build)
+    real_envs = [e for e in envs if not _is_checkonly_env(e)]
+
+    # Si no hay environments reales, usar todos (fallback)
+    eval_envs = real_envs if real_envs else envs
+
+    statuses = [e.get("status", "") for e in eval_envs]
+
     if any(s in ("inProgress", "queued") for s in statuses):
         return "inProgress", ""
-    active_envs = [e for e in envs if e.get("status", "") != "notStarted"]
+
+    active_envs = [e for e in eval_envs if e.get("status", "") != "notStarted"]
     if not active_envs:
         return "inProgress", ""
+
     active_statuses = [e.get("status", "") for e in active_envs]
     if all(s in ("succeeded", "skipped") for s in active_statuses):
         return "succeeded", _latest_deploy_date(active_envs)
+
     has_success = any(s in ("succeeded", "skipped") for s in active_statuses)
     has_failure = any(s in ("rejected", "failed", "canceled") for s in active_statuses)
     if has_success and has_failure:
