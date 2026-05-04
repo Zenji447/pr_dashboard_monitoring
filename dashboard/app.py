@@ -765,6 +765,59 @@ def toggle_rule_api(rule_type, rule_id):
         return jsonify({"ok": False, "error": "Error toggling regla"}), 500
 
 
+# ── Rule History Endpoints ────────────────────────────────────────────────────
+
+@app.route("/api/rules/history", methods=["GET"])
+@require_api_key
+def get_rule_history_api():
+    """Obtiene el historial de cambios en reglas."""
+    try:
+        from integrations.state import get_rule_history
+        
+        rule_id = request.args.get("rule_id")
+        rule_type = request.args.get("rule_type")
+        limit = int(request.args.get("limit", 100))
+        
+        history = get_rule_history(rule_id, rule_type, limit)
+        return jsonify({"ok": True, "history": history})
+    except Exception as e:
+        logger.error("[rules/history] GET %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error obteniendo historial"}), 500
+
+
+@app.route("/api/rules/history/stats", methods=["GET"])
+@require_api_key
+def get_rule_history_stats_api():
+    """Obtiene estadísticas del historial de cambios."""
+    try:
+        from integrations.state import get_rule_history_stats
+        
+        stats = get_rule_history_stats()
+        return jsonify({"ok": True, "stats": stats})
+    except Exception as e:
+        logger.error("[rules/history/stats] GET %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error obteniendo estadísticas"}), 500
+
+
+@app.route("/api/rules/history/<int:history_id>/rollback", methods=["POST"])
+@require_api_key
+def rollback_rule_change_api(history_id):
+    """Revierte un cambio en una regla."""
+    try:
+        from integrations.state import rollback_rule_change
+        
+        result = rollback_rule_change(history_id)
+        
+        if not result.get("ok"):
+            return jsonify(result), 400
+        
+        invalidate_prs_cache()
+        return jsonify(result)
+    except Exception as e:
+        logger.error("[rules/history/rollback] POST %s: %s", history_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error revirtiendo cambio"}), 500
+
+
 @app.route("/api/branch/create", methods=["POST"])
 @require_api_key
 def create_branch():
