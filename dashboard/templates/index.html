@@ -1549,11 +1549,14 @@ async function saveValidationRules() {
       const enabled = document.getElementById(`rule-${target}-enabled`)?.checked !== false;
       
       if (target === 'develop') {
+        const sprintsInput = document.getElementById(`rule-${target}-sprints`)?.value || '';
+        const sprintsArray = sprintsInput.split(',').map(s => s.trim()).filter(s => s);
+        
         updatedRules[target] = {
           enabled,
           release_pattern: document.getElementById(`rule-${target}-release-pattern`)?.value || '',
           release_message: document.getElementById(`rule-${target}-release-message`)?.value || '',
-          sprint: document.getElementById(`rule-${target}-sprint`)?.value || '',
+          sprints: sprintsArray,
           sprint_message: document.getElementById(`rule-${target}-sprint-message`)?.value || ''
         };
       } else if (target === 'develop-pr') {
