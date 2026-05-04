@@ -580,7 +580,7 @@ def create_custom_rule():
 
 @app.route("/api/validation-rules/custom/<rule_id>", methods=["DELETE"])
 @require_api_key
-def delete_custom_rule(rule_id):
+def delete_custom_rule_route(rule_id):
     """Elimina una regla personalizada."""
     try:
         from integrations.state import load_custom_rules, save_custom_rules
@@ -596,6 +596,134 @@ def delete_custom_rule(rule_id):
     except Exception as e:
         logger.error("[validation-rules/custom] DELETE %s: %s", rule_id, e, exc_info=True)
         return jsonify({"ok": False, "error": "Error eliminando regla"}), 500
+
+
+# ── Rules Management Module ──────────────────────────────────────────────────
+
+@app.route("/api/rules", methods=["GET"])
+def get_rules():
+    """Obtiene todas las reglas (branch + custom)."""
+    try:
+        rules = get_all_rules()
+        return jsonify({"ok": True, "rules": rules})
+    except Exception as e:
+        logger.error("[rules] GET %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error cargando reglas"}), 500
+
+
+@app.route("/api/rules/branch", methods=["GET"])
+def get_branch_rules_route():
+    """Obtiene solo las reglas de branch."""
+    try:
+        rules = get_branch_rules()
+        return jsonify({"ok": True, "rules": rules})
+    except Exception as e:
+        logger.error("[rules/branch] GET %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error cargando reglas de branch"}), 500
+
+
+@app.route("/api/rules/custom", methods=["GET"])
+def get_custom_rules_route():
+    """Obtiene solo las reglas personalizadas."""
+    try:
+        rules = get_custom_rules()
+        return jsonify({"ok": True, "rules": rules})
+    except Exception as e:
+        logger.error("[rules/custom] GET %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error cargando reglas personalizadas"}), 500
+
+
+@app.route("/api/rules/branch/<branch_name>", methods=["PUT"])
+@require_api_key
+def update_branch_rule_route(branch_name):
+    """Actualiza una regla de branch."""
+    try:
+        data = request.get_json(silent=True) or {}
+        result = update_branch_rule(branch_name, data)
+        
+        if not result.get("ok"):
+            return jsonify(result), 400
+        
+        invalidate_prs_cache()
+        return jsonify(result)
+    except Exception as e:
+        logger.error("[rules/branch] PUT %s: %s", branch_name, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error actualizando regla"}), 500
+
+
+@app.route("/api/rules/custom", methods=["POST"])
+@require_api_key
+def create_custom_rule_route():
+    """Crea una nueva regla personalizada."""
+    try:
+        data = request.get_json(silent=True) or {}
+        rule_id = data.get("id", "").strip()
+        
+        if not rule_id:
+            return jsonify({"ok": False, "error": "ID de regla requerido"}), 400
+        
+        result = create_custom_rule(rule_id, data)
+        
+        if not result.get("ok"):
+            return jsonify(result), 400
+        
+        invalidate_prs_cache()
+        return jsonify(result), 201
+    except Exception as e:
+        logger.error("[rules/custom] POST %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error creando regla"}), 500
+
+
+@app.route("/api/rules/custom/<rule_id>", methods=["PUT"])
+@require_api_key
+def update_custom_rule_route(rule_id):
+    """Actualiza una regla personalizada."""
+    try:
+        data = request.get_json(silent=True) or {}
+        result = update_custom_rule(rule_id, data)
+        
+        if not result.get("ok"):
+            return jsonify(result), 400
+        
+        invalidate_prs_cache()
+        return jsonify(result)
+    except Exception as e:
+        logger.error("[rules/custom] PUT %s: %s", rule_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error actualizando regla"}), 500
+
+
+@app.route("/api/rules/custom/<rule_id>", methods=["DELETE"])
+@require_api_key
+def delete_custom_rule_route_v2(rule_id):
+    """Elimina una regla personalizada."""
+    try:
+        result = delete_custom_rule(rule_id)
+        
+        if not result.get("ok"):
+            return jsonify(result), 404
+        
+        invalidate_prs_cache()
+        return jsonify(result)
+    except Exception as e:
+        logger.error("[rules/custom] DELETE %s: %s", rule_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error eliminando regla"}), 500
+
+
+@app.route("/api/rules/<rule_type>/<rule_id>/toggle", methods=["POST"])
+@require_api_key
+def toggle_rule_route(rule_type, rule_id):
+    """Activa/desactiva una regla."""
+    try:
+        result = toggle_rule(rule_type, rule_id)
+        
+        if not result.get("ok"):
+            return jsonify(result), 400
+        
+        invalidate_prs_cache()
+        return jsonify(result)
+    except Exception as e:
+        logger.error("[rules] toggle %s/%s: %s", rule_type, rule_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error toggling regla"}), 500
 
 
 @app.route("/api/branch/create", methods=["POST"])
