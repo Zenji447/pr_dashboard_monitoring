@@ -728,7 +728,11 @@ def update_custom_rule_api(rule_id):
 def delete_custom_rule_api(rule_id):
     """Elimina una regla personalizada."""
     try:
-        result = delete_custom_rule(rule_id)
+        # Obtener información del usuario
+        changed_by = request.headers.get("X-User-Name", "api_user")
+        ip_address = request.remote_addr
+        
+        result = delete_custom_rule(rule_id, changed_by, ip_address)
         
         if not result.get("ok"):
             return jsonify(result), 404
