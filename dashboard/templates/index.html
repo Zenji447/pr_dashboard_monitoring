@@ -2180,10 +2180,13 @@ async function exportSheets() {
 const today = new Date().toISOString().slice(0,10);
 document.getElementById("date-from").value = today;
 document.getElementById("date-to").value = today;
+document.getElementById("hist-from").value = today;
+document.getElementById("hist-to").value = today;
 loadAutoApproveConfig();
 loadBlockedAuthors();
 loadBlockedBranches();
 loadValidationRules();
+loadAllRules();
 applyI18n();
 
 // ── Loading overlay ──────────────────────────────────────────────────────────
