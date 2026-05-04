@@ -730,7 +730,7 @@ def delete_custom_rule_api(rule_id):
 
 @app.route("/api/rules/<rule_type>/<rule_id>/toggle", methods=["POST"])
 @require_api_key
-def toggle_rule_route(rule_type, rule_id):
+def toggle_rule_api(rule_type, rule_id):
     """Activa/desactiva una regla."""
     try:
         result = toggle_rule(rule_type, rule_id)
