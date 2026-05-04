@@ -207,13 +207,15 @@ def delete_custom_rule(rule_id, changed_by=None, ip_address=None):
         return {"ok": False, "error": str(e)}
 
 
-def toggle_rule(rule_type, rule_id):
+def toggle_rule(rule_type, rule_id, changed_by=None, ip_address=None):
     """
     Activa/desactiva una regla.
     
     Args:
         rule_type: 'branch' o 'custom'
         rule_id: ID de la regla
+        changed_by: Usuario que hace el cambio
+        ip_address: IP del usuario
     
     Returns:
         Dict con el nuevo estado o error
@@ -223,18 +225,35 @@ def toggle_rule(rule_type, rule_id):
             rules = load_pr_validation_rules()
             if rule_id not in rules:
                 return {"ok": False, "error": f"Rama '{rule_id}' no encontrada"}
+            
+            # Guardar valor anterior
+            old_value = json.dumps(rules[rule_id])
+            
             rules[rule_id]["enabled"] = not rules[rule_id].get("enabled", True)
             save_pr_validation_rules(rules)
+            
+            # Registrar cambio
+            new_value = json.dumps(rules[rule_id])
+            log_rule_change(rule_id, "branch", "toggle", old_value, new_value, changed_by, ip_address)
+            
         elif rule_type == "custom":
             rules = load_custom_rules()
             if rule_id not in rules:
                 return {"ok": False, "error": f"Regla '{rule_id}' no encontrada"}
+            
+            # Guardar valor anterior
+            old_value = json.dumps(rules[rule_id])
+            
             rules[rule_id]["enabled"] = not rules[rule_id].get("enabled", True)
             save_custom_rules(rules)
+            
+            # Registrar cambio
+            new_value = json.dumps(rules[rule_id])
+            log_rule_change(rule_id, "custom", "toggle", old_value, new_value, changed_by, ip_address)
         else:
             return {"ok": False, "error": "Tipo de regla inválido"}
         
-        logger.info(f"Regla {rule_type} '{rule_id}' toggled")
+        logger.info(f"Regla {rule_type} '{rule_id}' toggled por {changed_by or 'unknown'}")
         return {"ok": True, "enabled": rules[rule_id]["enabled"]}
     except Exception as e:
         logger.error(f"Error toggling regla: {e}")
