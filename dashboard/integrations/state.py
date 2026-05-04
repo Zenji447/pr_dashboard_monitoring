@@ -121,3 +121,64 @@ def load_pr_validation_rules():
 def save_pr_validation_rules(rules):
     """Guarda las reglas de validación de PR."""
     set_config("pr_validation_rules", rules)
+
+
+# ── Custom Validation Rules ──────────────────────────────────────────────────
+
+def load_custom_rules():
+    """Carga reglas de validación personalizadas."""
+    default_custom_rules = {
+        "manifest_validation": {
+            "name": "Validación de Manifest",
+            "description": "Valida que los archivos manifest cumplan con el formato requerido",
+            "enabled": True,
+            "type": "file_pattern",
+            "pattern": r".*manifest.*\.xml",
+            "validation_type": "content",
+            "validation_pattern": r"<version>[\d\.]+</version>",
+            "error_message": "Manifest sin versión válida",
+            "severity": "error"  # error, warning, info
+        },
+        "metadata_validation": {
+            "name": "Validación de Metadata",
+            "description": "Valida archivos de metadata de Salesforce",
+            "enabled": True,
+            "type": "file_pattern",
+            "pattern": r".*-meta\.xml$",
+            "validation_type": "exists",
+            "error_message": "Archivo metadata requerido",
+            "severity": "warning"
+        },
+        "test_coverage": {
+            "name": "Cobertura de Tests",
+            "description": "Valida que existan tests para clases nuevas",
+            "enabled": False,
+            "type": "file_pattern",
+            "pattern": r".*\.cls$",
+            "validation_type": "requires_test",
+            "error_message": "Clase sin test asociado",
+            "severity": "warning"
+        }
+    }
+    return get_config("custom_validation_rules", default_custom_rules)
+
+
+def save_custom_rules(rules):
+    """Guarda reglas de validación personalizadas."""
+    set_config("custom_validation_rules", rules)
+
+
+def get_all_validation_rules():
+    """Obtiene todas las reglas de validación (branch + custom)."""
+    return {
+        "branch_rules": load_pr_validation_rules(),
+        "custom_rules": load_custom_rules()
+    }
+
+
+def save_all_validation_rules(branch_rules=None, custom_rules=None):
+    """Guarda todas las reglas de validación."""
+    if branch_rules is not None:
+        save_pr_validation_rules(branch_rules)
+    if custom_rules is not None:
+        save_custom_rules(custom_rules)
