@@ -95,8 +95,8 @@ def load_pr_validation_rules():
         "develop": {
             "release_pattern": r"r?6[.\-]1",
             "release_message": "PR hacia develop sin release r6.1 en rama fuente",
-            "sprint": "sp70",
-            "sprint_message": "PR hacia develop sin sprint sp70 en rama fuente",
+            "sprints": ["sp69", "sp70"],  # Lista de sprints activos (soporta múltiples)
+            "sprint_message": "PR hacia develop sin sprint sp69 o sp70 en rama fuente",
             "enabled": True
         },
         "develop-pr": {
@@ -107,7 +107,15 @@ def load_pr_validation_rules():
             "enabled": True
         }
     }
-    return get_config("pr_validation_rules", default_rules)
+    rules = get_config("pr_validation_rules", default_rules)
+    
+    # Migración automática: convertir "sprint" (string) a "sprints" (lista)
+    if "develop" in rules and "sprint" in rules["develop"] and "sprints" not in rules["develop"]:
+        old_sprint = rules["develop"].pop("sprint")
+        rules["develop"]["sprints"] = [old_sprint] if old_sprint else []
+        save_pr_validation_rules(rules)
+    
+    return rules
 
 
 def save_pr_validation_rules(rules):
