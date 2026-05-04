@@ -749,7 +749,11 @@ def delete_custom_rule_api(rule_id):
 def toggle_rule_api(rule_type, rule_id):
     """Activa/desactiva una regla."""
     try:
-        result = toggle_rule(rule_type, rule_id)
+        # Obtener información del usuario
+        changed_by = request.headers.get("X-User-Name", "api_user")
+        ip_address = request.remote_addr
+        
+        result = toggle_rule(rule_type, rule_id, changed_by, ip_address)
         
         if not result.get("ok"):
             return jsonify(result), 400
