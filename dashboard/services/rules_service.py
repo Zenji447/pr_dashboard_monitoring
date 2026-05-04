@@ -128,13 +128,15 @@ def create_custom_rule(rule_id, rule_data, changed_by=None, ip_address=None):
         return {"ok": False, "error": str(e)}
 
 
-def update_custom_rule(rule_id, rule_data):
+def update_custom_rule(rule_id, rule_data, changed_by=None, ip_address=None):
     """
     Actualiza una regla personalizada existente.
     
     Args:
         rule_id: ID de la regla
         rule_data: Dict con los datos a actualizar
+        changed_by: Usuario que hace el cambio
+        ip_address: IP del usuario
     
     Returns:
         Dict con la regla actualizada o error
@@ -145,6 +147,9 @@ def update_custom_rule(rule_id, rule_data):
         if rule_id not in rules:
             return {"ok": False, "error": f"Regla '{rule_id}' no encontrada"}
         
+        # Guardar valor anterior para auditoría
+        old_value = json.dumps(rules[rule_id])
+        
         # Actualizar campos permitidos
         allowed_fields = ["name", "description", "enabled", "type", "pattern",
                          "validation_type", "validation_pattern", "error_message", "severity"]
@@ -154,7 +159,12 @@ def update_custom_rule(rule_id, rule_data):
                 rules[rule_id][field] = rule_data[field]
         
         save_custom_rules(rules)
-        logger.info(f"Regla personalizada '{rule_id}' actualizada")
+        
+        # Registrar cambio en historial
+        new_value = json.dumps(rules[rule_id])
+        log_rule_change(rule_id, "custom", "update", old_value, new_value, changed_by, ip_address)
+        
+        logger.info(f"Regla personalizada '{rule_id}' actualizada por {changed_by or 'unknown'}")
         
         return {"ok": True, "rule": rules[rule_id]}
     except Exception as e:
