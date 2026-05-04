@@ -298,6 +298,38 @@ def check_yaml_duplicates(source_ref, paths, token=None):
     return duplicates
 
 
+def load_validation_rules():
+    """Carga las reglas de validación desde la base de datos."""
+    try:
+        import sys
+        from pathlib import Path
+        # Agregar el directorio del dashboard al path
+        dashboard_path = Path(__file__).parent
+        if str(dashboard_path) not in sys.path:
+            sys.path.insert(0, str(dashboard_path))
+        
+        from integrations.state import load_pr_validation_rules
+        return load_pr_validation_rules()
+    except Exception as e:
+        # Si falla, usar reglas por defecto
+        return {
+            "develop": {
+                "release_pattern": r"r?6[.\-]1",
+                "release_message": "PR hacia develop sin release r6.1 en rama fuente",
+                "sprint": "sp70",
+                "sprint_message": "PR hacia develop sin sprint sp70 en rama fuente",
+                "enabled": True
+            },
+            "develop-pr": {
+                "warning_message": "target develop-pr, rama bugfix flexible",
+                "enabled": True
+            },
+            "releaseproyecto/r6": {
+                "enabled": True
+            }
+        }
+
+
 def classify(pr, changes, token=None):
     title = pr.get("title", "")
     source = normalize_ref(pr.get("sourceRefName", ""))
@@ -323,19 +355,34 @@ def classify(pr, changes, token=None):
             for dup in duplicates:
                 reasons.append(f"componente duplicado en {dup['file']}: {dup['component']} (líneas {dup['lines'][0]}, {dup['lines'][1]})")
 
-    if target == "develop":
-        if not re.search(r"r?6[.\-]1", source, re.IGNORECASE):
-            verdict = "rechazar"
-            reasons.append("PR hacia develop sin release r6.1 en rama fuente")
-        if "sp70" not in source.lower():
-            verdict = "rechazar"
-            reasons.append("PR hacia develop sin sprint sp70 en rama fuente")
-    elif target == "develop-pr":
-        if verdict != "rechazar":
-            warnings.append("target develop-pr, rama bugfix flexible")
-    elif target == "releaseproyecto/r6":
-        pass  # flujo válido, sin restricciones adicionales
+    # Cargar reglas de validación dinámicas
+    validation_rules = load_validation_rules()
+    
+    # Aplicar reglas según el target
+    if target in validation_rules and validation_rules[target].get("enabled", True):
+        rule = validation_rules[target]
+        
+        if target == "develop":
+            # Validar release pattern
+            if "release_pattern" in rule:
+                if not re.search(rule["release_pattern"], source, re.IGNORECASE):
+                    verdict = "rechazar"
+                    reasons.append(rule.get("release_message", f"PR hacia {target} sin release válido en rama fuente"))
+            
+            # Validar sprint
+            if "sprint" in rule:
+                if rule["sprint"].lower() not in source.lower():
+                    verdict = "rechazar"
+                    reasons.append(rule.get("sprint_message", f"PR hacia {target} sin sprint {rule['sprint']} en rama fuente"))
+        
+        elif target == "develop-pr":
+            if verdict != "rechazar" and "warning_message" in rule:
+                warnings.append(rule["warning_message"])
+        
+        elif target == "releaseproyecto/r6":
+            pass  # flujo válido, sin restricciones adicionales
     else:
+        # Target no configurado o deshabilitado
         if verdict == "aprobable":
             verdict = "revisar"
         reasons.append(f"target {target} fuera del flujo principal")

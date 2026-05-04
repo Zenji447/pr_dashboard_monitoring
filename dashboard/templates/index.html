@@ -577,6 +577,19 @@
       </div>
     </div>
 
+    <!-- PR Validation Rules -->
+    <div class="sidebar-section collapsible-section">
+      <div class="sidebar-title collapsible-header" onclick="toggleSection(this)">
+        <span data-i18n="prValidationRules">Validaciones de PR</span> <span class="collapse-icon">▾</span>
+      </div>
+      <div class="collapsible-body">
+        <div id="validation-rules-list" style="display:flex;flex-direction:column;gap:12px"></div>
+        <button class="btn-add" onclick="openValidationRulesModal()" style="width:100%;margin-top:8px;padding:8px">
+          ⚙️ <span data-i18n="configureRules">Configurar Reglas</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Crear rama -->
     <div class="sidebar-section" style="padding:10px 16px">
       <button class="btn-new-branch" onclick="openNewBranchModal()">
