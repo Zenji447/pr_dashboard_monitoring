@@ -713,7 +713,7 @@ def update_custom_rule_api(rule_id):
 
 @app.route("/api/rules/custom/<rule_id>", methods=["DELETE"])
 @require_api_key
-def delete_custom_rule_route_v2(rule_id):
+def delete_custom_rule_api(rule_id):
     """Elimina una regla personalizada."""
     try:
         result = delete_custom_rule(rule_id)
