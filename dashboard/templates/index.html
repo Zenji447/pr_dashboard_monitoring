@@ -1851,6 +1851,208 @@ async function saveValidationRules() {
   }
 }
 
+// ── Custom Rules Management ──────────────────────────────────────────────────
+
+function switchRulesTab(tab) {
+  currentRulesTab = tab;
+  document.getElementById('tab-branch').classList.toggle('active', tab === 'branch');
+  document.getElementById('tab-custom').classList.toggle('active', tab === 'custom');
+  document.getElementById('branch-rules-content').style.display = tab === 'branch' ? 'block' : 'none';
+  document.getElementById('custom-rules-content').style.display = tab === 'custom' ? 'block' : 'none';
+  
+  if (tab === 'custom') {
+    renderCustomRulesList();
+  }
+}
+
+function renderCustomRulesList() {
+  const container = document.getElementById('custom-rules-list');
+  const ruleIds = Object.keys(customRules);
+  
+  if (ruleIds.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:40px;color:var(--muted)">
+        <div style="font-size:2rem;margin-bottom:8px">🔧</div>
+        <div style="font-size:.9rem">No hay reglas personalizadas</div>
+        <div style="font-size:.75rem;margin-top:4px">Crea tu primera regla para comenzar</div>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = ruleIds.map(ruleId => {
+    const rule = customRules[ruleId];
+    const severityClass = `severity-${rule.severity || 'warning'}`;
+    const enabled = rule.enabled !== false;
+    
+    return `
+      <div class="custom-rule-card" style="opacity:${enabled ? 1 : 0.5}">
+        <div class="custom-rule-header">
+          <div>
+            <div class="custom-rule-title">${esc(rule.name || ruleId)}</div>
+            <span class="custom-rule-id">${esc(ruleId)}</span>
+          </div>
+          <span style="color:${enabled ? '#22c55e' : '#64748b'};font-size:1.2rem">●</span>
+        </div>
+        ${rule.description ? `<div class="custom-rule-description">${esc(rule.description)}</div>` : ''}
+        <div class="custom-rule-meta">
+          <span class="custom-rule-badge ${severityClass}">${rule.severity || 'warning'}</span>
+          <span class="custom-rule-badge type">${rule.type || 'file_pattern'}</span>
+          <span class="custom-rule-badge type">${rule.validation_type || 'exists'}</span>
+        </div>
+        ${rule.pattern ? `<div class="rule-pattern">Pattern: ${esc(rule.pattern)}</div>` : ''}
+        ${rule.error_message ? `<div style="font-size:.75rem;color:#f87171;margin-top:8px">❌ ${esc(rule.error_message)}</div>` : ''}
+        <div class="custom-rule-actions">
+          <button class="btn-rule-action" onclick="editCustomRule('${esc(ruleId)}')">✏️ Editar</button>
+          <button class="btn-rule-action" onclick="toggleCustomRule('${esc(ruleId)}')">${enabled ? '⏸️ Deshabilitar' : '▶️ Habilitar'}</button>
+          <button class="btn-rule-action danger" onclick="deleteCustomRule('${esc(ruleId)}')">🗑️ Eliminar</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openNewCustomRuleModal() {
+  editingCustomRule = null;
+  document.getElementById('custom-rule-modal-title').textContent = lang === 'es' ? 'Nueva Regla Personalizada' : 'New Custom Rule';
+  document.getElementById('custom-rule-id').value = '';
+  document.getElementById('custom-rule-id').disabled = false;
+  document.getElementById('custom-rule-name').value = '';
+  document.getElementById('custom-rule-description').value = '';
+  document.getElementById('custom-rule-type').value = 'file_pattern';
+  document.getElementById('custom-rule-severity').value = 'warning';
+  document.getElementById('custom-rule-pattern').value = '';
+  document.getElementById('custom-rule-validation-type').value = 'exists';
+  document.getElementById('custom-rule-validation-pattern').value = '';
+  document.getElementById('custom-rule-error-message').value = '';
+  document.getElementById('custom-rule-enabled').checked = true;
+  document.getElementById('custom-rule-modal').classList.add('open');
+}
+
+function editCustomRule(ruleId) {
+  editingCustomRule = ruleId;
+  const rule = customRules[ruleId];
+  
+  document.getElementById('custom-rule-modal-title').textContent = lang === 'es' ? 'Editar Regla' : 'Edit Rule';
+  document.getElementById('custom-rule-id').value = ruleId;
+  document.getElementById('custom-rule-id').disabled = true;
+  document.getElementById('custom-rule-name').value = rule.name || '';
+  document.getElementById('custom-rule-description').value = rule.description || '';
+  document.getElementById('custom-rule-type').value = rule.type || 'file_pattern';
+  document.getElementById('custom-rule-severity').value = rule.severity || 'warning';
+  document.getElementById('custom-rule-pattern').value = rule.pattern || '';
+  document.getElementById('custom-rule-validation-type').value = rule.validation_type || 'exists';
+  document.getElementById('custom-rule-validation-pattern').value = rule.validation_pattern || '';
+  document.getElementById('custom-rule-error-message').value = rule.error_message || '';
+  document.getElementById('custom-rule-enabled').checked = rule.enabled !== false;
+  document.getElementById('custom-rule-modal').classList.add('open');
+}
+
+function closeCustomRuleModal() {
+  document.getElementById('custom-rule-modal').classList.remove('open');
+  document.getElementById('modal-custom-rule-status').textContent = '';
+  editingCustomRule = null;
+}
+
+async function saveCustomRule() {
+  const status = document.getElementById('modal-custom-rule-status');
+  status.style.color = 'var(--muted)';
+  status.textContent = lang === 'es' ? 'Guardando...' : 'Saving...';
+  
+  try {
+    const ruleId = document.getElementById('custom-rule-id').value.trim();
+    if (!ruleId) {
+      throw new Error(lang === 'es' ? 'ID de regla requerido' : 'Rule ID required');
+    }
+    
+    const ruleData = {
+      id: ruleId,
+      name: document.getElementById('custom-rule-name').value.trim(),
+      description: document.getElementById('custom-rule-description').value.trim(),
+      type: document.getElementById('custom-rule-type').value,
+      severity: document.getElementById('custom-rule-severity').value,
+      pattern: document.getElementById('custom-rule-pattern').value.trim(),
+      validation_type: document.getElementById('custom-rule-validation-type').value,
+      validation_pattern: document.getElementById('custom-rule-validation-pattern').value.trim(),
+      error_message: document.getElementById('custom-rule-error-message').value.trim(),
+      enabled: document.getElementById('custom-rule-enabled').checked
+    };
+    
+    const url = editingCustomRule 
+      ? `/api/validation-rules/custom/${encodeURIComponent(ruleId)}`
+      : '/api/validation-rules/custom';
+    const method = editingCustomRule ? 'PUT' : 'POST';
+    
+    const res = await fetch(url, {
+      method,
+      headers: apiHeaders({'Content-Type': 'application/json'}),
+      body: JSON.stringify(ruleData)
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      customRules[ruleId] = res.rule;
+      renderCustomRulesList();
+      renderValidationRulesSummary();
+      status.style.color = 'var(--green)';
+      status.textContent = lang === 'es' ? '✓ Regla guardada' : '✓ Rule saved';
+      setTimeout(() => closeCustomRuleModal(), 1000);
+    } else {
+      throw new Error(res.error || 'Error desconocido');
+    }
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = `✗ ${e.message}`;
+  }
+}
+
+async function toggleCustomRule(ruleId) {
+  try {
+    const rule = customRules[ruleId];
+    rule.enabled = !rule.enabled;
+    
+    const res = await fetch(`/api/validation-rules/custom/${encodeURIComponent(ruleId)}`, {
+      method: 'PUT',
+      headers: apiHeaders({'Content-Type': 'application/json'}),
+      body: JSON.stringify(rule)
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      customRules[ruleId] = res.rule;
+      renderCustomRulesList();
+      renderValidationRulesSummary();
+    }
+  } catch(e) {
+    console.error('Error toggling rule:', e);
+    alert(lang === 'es' ? 'Error al cambiar estado de la regla' : 'Error toggling rule');
+  }
+}
+
+async function deleteCustomRule(ruleId) {
+  const confirmMsg = lang === 'es' 
+    ? `¿Eliminar la regla "${customRules[ruleId]?.name || ruleId}"?`
+    : `Delete rule "${customRules[ruleId]?.name || ruleId}"?`;
+  
+  if (!confirm(confirmMsg)) return;
+  
+  try {
+    const res = await fetch(`/api/validation-rules/custom/${encodeURIComponent(ruleId)}`, {
+      method: 'DELETE',
+      headers: apiHeaders()
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      delete customRules[ruleId];
+      renderCustomRulesList();
+      renderValidationRulesSummary();
+    } else {
+      throw new Error(res.error || 'Error desconocido');
+    }
+  } catch(e) {
+    console.error('Error deleting rule:', e);
+    alert(lang === 'es' ? 'Error al eliminar la regla' : 'Error deleting rule');
+  }
+}
+
 // ── Google Sheets export ─────────────────────────────────────────────────────
 async function exportSheets() {
   const btn = document.getElementById("btn-export");
