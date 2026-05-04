@@ -11,6 +11,7 @@ from integrations.state import (
     load_custom_rules,
     save_custom_rules,
     get_all_validation_rules,
+    log_rule_change,
 )
 
 logger = logging.getLogger("rules_service")
