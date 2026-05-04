@@ -76,13 +76,15 @@ def update_branch_rule(branch_name, rule_data, changed_by=None, ip_address=None)
         return {"ok": False, "error": str(e)}
 
 
-def create_custom_rule(rule_id, rule_data):
+def create_custom_rule(rule_id, rule_data, changed_by=None, ip_address=None):
     """
     Crea una nueva regla personalizada.
     
     Args:
         rule_id: ID único para la regla
         rule_data: Dict con los datos de la regla
+        changed_by: Usuario que crea la regla
+        ip_address: IP del usuario
     
     Returns:
         Dict con la regla creada o error
@@ -114,7 +116,11 @@ def create_custom_rule(rule_id, rule_data):
         
         rules[rule_id] = new_rule
         save_custom_rules(rules)
-        logger.info(f"Regla personalizada '{rule_id}' creada")
+        
+        # Registrar creación en historial
+        log_rule_change(rule_id, "custom", "create", None, json.dumps(new_rule), changed_by, ip_address)
+        
+        logger.info(f"Regla personalizada '{rule_id}' creada por {changed_by or 'unknown'}")
         
         return {"ok": True, "rule": new_rule}
     except Exception as e:
