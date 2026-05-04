@@ -611,6 +611,25 @@ def get_rules():
         return jsonify({"ok": False, "error": "Error cargando reglas"}), 500
 
 
+@app.route("/api/rules", methods=["POST"])
+@require_api_key
+def save_all_rules_route():
+    """Guarda todas las reglas (branch + custom)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        branch_rules = data.get("branch_rules")
+        custom_rules = data.get("custom_rules")
+        
+        from integrations.state import save_all_validation_rules
+        save_all_validation_rules(branch_rules, custom_rules)
+        invalidate_prs_cache()
+        
+        return jsonify({"ok": True, "rules": get_all_rules()})
+    except Exception as e:
+        logger.error("[rules] POST %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error guardando reglas"}), 500
+
+
 @app.route("/api/rules/branch", methods=["GET"])
 def get_branch_rules_route():
     """Obtiene solo las reglas de branch."""
