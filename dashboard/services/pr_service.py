@@ -235,9 +235,10 @@ def _try_auto_complete(pr_id, report, state, token):
     }
     append_pr(sheet_pr, auto_approved=int(pr_id) in state.get("auto_approved", []), approval_date=approval_date)
 
-    # Notificar solo si no se ha notificado antes
+    # Notificar solo si no se ha notificado antes y no hay conflictos
+    has_conflicts = pr_data.get("mergeStatus") == "conflicts"
     completed_notified = state.setdefault("completed_notified", [])
-    if int(pr_id) not in completed_notified:
+    if int(pr_id) not in completed_notified and not has_conflicts:
         def _notify():
             thread_ts = wait_for_pr_thread(int(pr_id))
             if thread_ts:
@@ -245,7 +246,7 @@ def _try_auto_complete(pr_id, report, state, token):
                     slack_api("chat.postMessage", {
                         "channel": SLACK_PR_CHANNEL,
                         "thread_ts": thread_ts,
-                        "text": "🚀 PR integrado — si no hay conflicto el despliegue estará en curso, te avisamos cuando termine.",
+                        "text": "🚀 PR integrado — el despliegue estará en curso, te avisamos cuando termine.",
                     })
                     # Marcar como notificado después de enviar exitosamente
                     state_inner = load_state()
@@ -257,6 +258,9 @@ def _try_auto_complete(pr_id, report, state, token):
                     logger.error("[auto-complete] Slack PR %s: %s", pr_id, e)
 
         threading.Thread(target=_notify, daemon=True).start()
+    elif has_conflicts:
+        # Si hay conflictos después de completar, notificar
+        _notify_conflict(pr_id)
 
 
 def _notify_conflict(pr_id):
