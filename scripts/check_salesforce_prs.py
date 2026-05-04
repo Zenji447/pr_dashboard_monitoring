@@ -327,9 +327,9 @@ def classify(pr, changes, token=None):
         if not re.search(r"r?6[.\-]1", source, re.IGNORECASE):
             verdict = "rechazar"
             reasons.append("PR hacia develop sin release r6.1 en rama fuente")
-        if "sp69" not in source.lower():
+        if "sp70" not in source.lower():
             verdict = "rechazar"
-            reasons.append("PR hacia develop sin sprint sp69 en rama fuente")
+            reasons.append("PR hacia develop sin sprint sp70 en rama fuente")
     elif target == "develop-pr":
         if verdict != "rechazar":
             warnings.append("target develop-pr, rama bugfix flexible")

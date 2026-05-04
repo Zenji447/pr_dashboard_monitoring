@@ -85,3 +85,31 @@ def load_blocked_branches():
 
 def save_blocked_branches(branches):
     set_config("blocked_branches", branches)
+
+
+# ── PR Validation Rules ──────────────────────────────────────────────────────
+
+def load_pr_validation_rules():
+    """Carga las reglas de validación de PR configurables."""
+    default_rules = {
+        "develop": {
+            "release_pattern": r"r?6[.\-]1",
+            "release_message": "PR hacia develop sin release r6.1 en rama fuente",
+            "sprint": "sp70",
+            "sprint_message": "PR hacia develop sin sprint sp70 en rama fuente",
+            "enabled": True
+        },
+        "develop-pr": {
+            "warning_message": "target develop-pr, rama bugfix flexible",
+            "enabled": True
+        },
+        "releaseproyecto/r6": {
+            "enabled": True
+        }
+    }
+    return get_config("pr_validation_rules", default_rules)
+
+
+def save_pr_validation_rules(rules):
+    """Guarda las reglas de validación de PR."""
+    set_config("pr_validation_rules", rules)
