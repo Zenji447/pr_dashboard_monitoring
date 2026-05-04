@@ -672,7 +672,7 @@ def update_branch_rule_route(branch_name):
 
 @app.route("/api/rules/custom", methods=["POST"])
 @require_api_key
-def create_custom_rule_route():
+def create_custom_rule_api():
     """Crea una nueva regla personalizada."""
     try:
         data = request.get_json(silent=True) or {}
