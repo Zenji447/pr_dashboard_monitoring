@@ -1690,12 +1690,16 @@ async function saveBlockedBranches() {
 
 // ── PR Validation Rules ──────────────────────────────────────────────────────
 let validationRules = {};
+let customRules = {};
+let currentRulesTab = 'branch';
+let editingCustomRule = null;
 
 async function loadValidationRules() {
   try {
-    const res = await fetch("/api/config/pr-validation-rules").then(r => r.json());
+    const res = await fetch("/api/validation-rules").then(r => r.json());
     if (res.ok) {
-      validationRules = res.rules || {};
+      validationRules = res.rules.branch_rules || {};
+      customRules = res.rules.custom_rules || {};
       renderValidationRulesSummary();
     }
   } catch(e) {
@@ -1705,29 +1709,48 @@ async function loadValidationRules() {
 
 function renderValidationRulesSummary() {
   const container = document.getElementById("validation-rules-list");
-  const targets = Object.keys(validationRules);
+  const branchTargets = Object.keys(validationRules);
+  const customRuleIds = Object.keys(customRules);
+  const totalRules = branchTargets.length + customRuleIds.length;
+  const enabledCount = branchTargets.filter(t => validationRules[t].enabled !== false).length +
+                       customRuleIds.filter(id => customRules[id].enabled !== false).length;
   
-  if (targets.length === 0) {
+  if (totalRules === 0) {
     container.innerHTML = `<span style="color:#64748b;font-size:.78rem">${t('loadingConfig')}</span>`;
     return;
   }
   
-  container.innerHTML = targets.map(target => {
-    const rule = validationRules[target];
-    const enabled = rule.enabled !== false;
-    const statusColor = enabled ? '#22c55e' : '#64748b';
-    
-    return `
-      <div style="background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:6px;padding:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <span style="font-weight:600;font-size:.82rem;color:#e2e8f0">${esc(target)}</span>
-          <span style="color:${statusColor};font-size:.72rem">●</span>
-        </div>
-        ${target === 'develop' ? `<div style="font-size:.72rem;color:#94a3b8">Sprint: <span style="color:#60a5fa">${esc((rule.sprints || (rule.sprint ? [rule.sprint] : [])).join(', '))}</span></div>` : ''}
-        ${rule.warning_message ? `<div style="font-size:.72rem;color:#facc15">⚠️ ${esc(rule.warning_message)}</div>` : ''}
+  container.innerHTML = `
+    <div style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:6px;padding:12px;margin-bottom:8px">
+      <div style="font-size:.85rem;color:#e2e8f0;margin-bottom:4px">
+        <strong>${totalRules}</strong> reglas configuradas
       </div>
-    `;
-  }).join('');
+      <div style="font-size:.75rem;color:#94a3b8">
+        ${enabledCount} activas · ${totalRules - enabledCount} deshabilitadas
+      </div>
+    </div>
+    ${branchTargets.slice(0, 3).map(target => {
+      const rule = validationRules[target];
+      const enabled = rule.enabled !== false;
+      const statusColor = enabled ? '#22c55e' : '#64748b';
+      
+      return `
+        <div style="background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:6px;padding:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-weight:600;font-size:.82rem;color:#e2e8f0">${esc(target)}</span>
+            <span style="color:${statusColor};font-size:.72rem">●</span>
+          </div>
+          ${target === 'develop' ? `<div style="font-size:.72rem;color:#94a3b8">Sprint: <span style="color:#60a5fa">${esc((rule.sprints || (rule.sprint ? [rule.sprint] : [])).join(', '))}</span></div>` : ''}
+          ${rule.warning_message ? `<div style="font-size:.72rem;color:#facc15">⚠️ ${esc(rule.warning_message)}</div>` : ''}
+        </div>
+      `;
+    }).join('')}
+    ${customRuleIds.length > 0 ? `
+      <div style="font-size:.75rem;color:#94a3b8;margin-top:8px;padding:8px;background:rgba(168,85,247,.1);border-radius:4px">
+        🔧 ${customRuleIds.length} regla${customRuleIds.length > 1 ? 's' : ''} personalizada${customRuleIds.length > 1 ? 's' : ''}
+      </div>
+    ` : ''}
+  `;
 }
 
 function openValidationRulesModal() {
