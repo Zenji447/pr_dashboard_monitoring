@@ -259,7 +259,7 @@ def _try_auto_complete(pr_id, report, state, token):
         threading.Thread(target=_notify, daemon=True).start()
 
 
-
+def _notify_conflict(pr_id):
     try:
         thread_ts = wait_for_pr_thread(int(pr_id))
         if thread_ts:
