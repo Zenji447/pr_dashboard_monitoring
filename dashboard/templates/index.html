@@ -1505,9 +1505,10 @@ function openValidationRulesModal() {
             </div>
             <div>
               <label style="display:block;font-size:.75rem;color:#94a3b8;margin-bottom:4px" data-i18n="sprint">${t('sprint')}</label>
-              <input type="text" id="rule-${target}-sprint" value="${esc(rule.sprint || '')}" 
+              <input type="text" id="rule-${target}-sprints" value="${esc((rule.sprints || rule.sprint ? [rule.sprint] : []).join(', '))}" 
                      style="width:100%;padding:8px;background:rgba(0,0,0,.3);border:1px solid var(--border2);border-radius:4px;color:#e2e8f0;font-size:.82rem"
-                     placeholder="sp70">
+                     placeholder="sp69, sp70">
+              <div style="font-size:.7rem;color:#64748b;margin-top:4px">Separar múltiples sprints con comas (ej: sp69, sp70)</div>
             </div>
             <div>
               <label style="display:block;font-size:.75rem;color:#94a3b8;margin-bottom:4px" data-i18n="sprintMessage">${t('sprintMessage')}</label>
