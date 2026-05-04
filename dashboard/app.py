@@ -517,28 +517,15 @@ def save_all_validation_rules_route():
 
 @app.route("/api/validation-rules/custom/<rule_id>", methods=["PUT"])
 @require_api_key
-def update_custom_rule(rule_id):
-    """Actualiza una regla personalizada."""
+def get_pr_validation_rules_route():
+    """Obtiene las reglas de validación de PR configurables."""
     try:
-        from integrations.state import load_custom_rules, save_custom_rules
-        data = request.get_json(silent=True) or {}
-        
-        rules = load_custom_rules()
-        if rule_id not in rules:
-            return jsonify({"ok": False, "error": "Regla no encontrada"}), 404
-        
-        # Actualizar campos
-        for key in ["name", "description", "enabled", "type", "pattern", 
-                    "validation_type", "validation_pattern", "error_message", "severity"]:
-            if key in data:
-                rules[rule_id][key] = data[key]
-        
-        save_custom_rules(rules)
-        invalidate_prs_cache()
-        return jsonify({"ok": True, "rule": rules[rule_id]})
+        from integrations.state import load_pr_validation_rules
+        rules = load_pr_validation_rules()
+        return jsonify({"ok": True, "rules": rules})
     except Exception as e:
-        logger.error("[validation-rules/custom] PUT %s: %s", rule_id, e, exc_info=True)
-        return jsonify({"ok": False, "error": "Error actualizando regla"}), 500
+        logger.error("[config/pr-validation-rules] GET %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error cargando reglas"}), 500
 
 
 # ── Rules Management Module ──────────────────────────────────────────────────
