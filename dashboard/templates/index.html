@@ -761,6 +761,24 @@
   </div>
 </div>
 
+<!-- PR Validation Rules Modal -->
+<div class="modal-overlay" id="validation-rules-modal" onclick="if(event.target===this)closeValidationRulesModal()">
+  <div class="modal" style="max-width:700px;max-height:85vh;overflow-y:auto">
+    <div class="modal-title">
+      <span>⚙️</span>
+      <span data-i18n="prValidationRules">Validaciones de PR</span>
+    </div>
+    <div id="validation-rules-editor" style="display:flex;flex-direction:column;gap:16px"></div>
+    <div class="modal-status" id="modal-validation-status"></div>
+    <div class="modal-actions">
+      <button onclick="closeValidationRulesModal()" style="background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border2)" data-i18n="cancel">Cancelar</button>
+      <button onclick="saveValidationRules()" class="btn-sheets" data-i18n="saveRules">Guardar Reglas</button>
+    </div>
+  </div>
+</div>
+  </div>
+</div>
+
 <script>
   const API_KEY = localStorage.getItem("pr_dashboard_api_key") || "";
 
