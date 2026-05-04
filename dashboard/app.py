@@ -695,7 +695,7 @@ def create_custom_rule_api():
 
 @app.route("/api/rules/custom/<rule_id>", methods=["PUT"])
 @require_api_key
-def update_custom_rule_route(rule_id):
+def update_custom_rule_api(rule_id):
     """Actualiza una regla personalizada."""
     try:
         data = request.get_json(silent=True) or {}
