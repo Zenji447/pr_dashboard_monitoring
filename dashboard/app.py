@@ -541,63 +541,6 @@ def update_custom_rule(rule_id):
         return jsonify({"ok": False, "error": "Error actualizando regla"}), 500
 
 
-@app.route("/api/validation-rules/custom", methods=["POST"])
-@require_api_key
-def create_custom_rule():
-    """Crea una nueva regla personalizada."""
-    try:
-        from integrations.state import load_custom_rules, save_custom_rules
-        data = request.get_json(silent=True) or {}
-        
-        rule_id = data.get("id", "").strip()
-        if not rule_id:
-            return jsonify({"ok": False, "error": "ID de regla requerido"}), 400
-        
-        rules = load_custom_rules()
-        if rule_id in rules:
-            return jsonify({"ok": False, "error": "Regla ya existe"}), 409
-        
-        # Crear nueva regla con valores por defecto
-        rules[rule_id] = {
-            "name": data.get("name", "Nueva Regla"),
-            "description": data.get("description", ""),
-            "enabled": data.get("enabled", True),
-            "type": data.get("type", "file_pattern"),
-            "pattern": data.get("pattern", ".*"),
-            "validation_type": data.get("validation_type", "exists"),
-            "validation_pattern": data.get("validation_pattern", ""),
-            "error_message": data.get("error_message", "Validación fallida"),
-            "severity": data.get("severity", "warning")
-        }
-        
-        save_custom_rules(rules)
-        invalidate_prs_cache()
-        return jsonify({"ok": True, "rule": rules[rule_id]})
-    except Exception as e:
-        logger.error("[validation-rules/custom] POST %s", e, exc_info=True)
-        return jsonify({"ok": False, "error": "Error creando regla"}), 500
-
-
-@app.route("/api/validation-rules/custom/<rule_id>", methods=["DELETE"])
-@require_api_key
-def delete_custom_rule_route(rule_id):
-    """Elimina una regla personalizada."""
-    try:
-        from integrations.state import load_custom_rules, save_custom_rules
-        
-        rules = load_custom_rules()
-        if rule_id not in rules:
-            return jsonify({"ok": False, "error": "Regla no encontrada"}), 404
-        
-        del rules[rule_id]
-        save_custom_rules(rules)
-        invalidate_prs_cache()
-        return jsonify({"ok": True})
-    except Exception as e:
-        logger.error("[validation-rules/custom] DELETE %s: %s", rule_id, e, exc_info=True)
-        return jsonify({"ok": False, "error": "Error eliminando regla"}), 500
-
-
 # ── Rules Management Module ──────────────────────────────────────────────────
 
 @app.route("/api/rules", methods=["GET"])
