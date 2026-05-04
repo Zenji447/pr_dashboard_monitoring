@@ -654,7 +654,7 @@ def get_custom_rules_route():
 
 @app.route("/api/rules/branch/<branch_name>", methods=["PUT"])
 @require_api_key
-def update_branch_rule_route(branch_name):
+def update_branch_rule_api(branch_name):
     """Actualiza una regla de branch."""
     try:
         data = request.get_json(silent=True) or {}
