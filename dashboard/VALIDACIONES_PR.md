@@ -16,8 +16,8 @@ Este módulo permite gestionar de forma dinámica las validaciones de Pull Reque
 #### **develop**
 - **Release Pattern**: Expresión regular para validar el patrón de release (ej: `r?6[.\-]1`)
 - **Release Message**: Mensaje de error cuando no cumple el patrón de release
-- **Sprint**: Código del sprint actual (ej: `sp70`)
-- **Sprint Message**: Mensaje de error cuando no cumple el sprint
+- **Sprints**: Lista de sprints activos (ej: `sp69, sp70`) - soporta múltiples sprints simultáneos
+- **Sprint Message**: Mensaje de error cuando no cumple con ninguno de los sprints activos
 - **Enabled**: Activar/desactivar validación para esta rama
 
 #### **develop-pr**
