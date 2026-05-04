@@ -32,8 +32,8 @@ def test_save_rules():
         "develop": {
             "release_pattern": r"r?6[.\-]1",
             "release_message": "PR hacia develop sin release r6.1 en rama fuente",
-            "sprint": "sp70",
-            "sprint_message": "PR hacia develop sin sprint sp70 en rama fuente",
+            "sprints": ["sp69", "sp70"],  # Múltiples sprints activos
+            "sprint_message": "PR hacia develop sin sprint sp69 o sp70 en rama fuente",
             "enabled": True
         },
         "develop-pr": {
