@@ -476,6 +476,123 @@ def set_pr_validation_rules_route():
         return jsonify({"ok": False, "error": "Error guardando reglas"}), 500
 
 
+# ── Validation Rules Management ──────────────────────────────────────────────
+
+@app.route("/api/validation-rules", methods=["GET"])
+def get_all_validation_rules():
+    """Obtiene todas las reglas de validación (branch + custom)."""
+    try:
+        from integrations.state import get_all_validation_rules
+        rules = get_all_validation_rules()
+        return jsonify({"ok": True, "rules": rules})
+    except Exception as e:
+        logger.error("[validation-rules] GET %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error cargando reglas"}), 500
+
+
+@app.route("/api/validation-rules", methods=["POST"])
+@require_api_key
+def save_all_validation_rules_route():
+    """Guarda todas las reglas de validación."""
+    try:
+        from integrations.state import save_all_validation_rules
+        data = request.get_json(silent=True) or {}
+        branch_rules = data.get("branch_rules")
+        custom_rules = data.get("custom_rules")
+        
+        save_all_validation_rules(branch_rules, custom_rules)
+        invalidate_prs_cache()
+        
+        from integrations.state import get_all_validation_rules
+        return jsonify({"ok": True, "rules": get_all_validation_rules()})
+    except Exception as e:
+        logger.error("[validation-rules] POST %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error guardando reglas"}), 500
+
+
+@app.route("/api/validation-rules/custom/<rule_id>", methods=["PUT"])
+@require_api_key
+def update_custom_rule(rule_id):
+    """Actualiza una regla personalizada."""
+    try:
+        from integrations.state import load_custom_rules, save_custom_rules
+        data = request.get_json(silent=True) or {}
+        
+        rules = load_custom_rules()
+        if rule_id not in rules:
+            return jsonify({"ok": False, "error": "Regla no encontrada"}), 404
+        
+        # Actualizar campos
+        for key in ["name", "description", "enabled", "type", "pattern", 
+                    "validation_type", "validation_pattern", "error_message", "severity"]:
+            if key in data:
+                rules[rule_id][key] = data[key]
+        
+        save_custom_rules(rules)
+        invalidate_prs_cache()
+        return jsonify({"ok": True, "rule": rules[rule_id]})
+    except Exception as e:
+        logger.error("[validation-rules/custom] PUT %s: %s", rule_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error actualizando regla"}), 500
+
+
+@app.route("/api/validation-rules/custom", methods=["POST"])
+@require_api_key
+def create_custom_rule():
+    """Crea una nueva regla personalizada."""
+    try:
+        from integrations.state import load_custom_rules, save_custom_rules
+        data = request.get_json(silent=True) or {}
+        
+        rule_id = data.get("id", "").strip()
+        if not rule_id:
+            return jsonify({"ok": False, "error": "ID de regla requerido"}), 400
+        
+        rules = load_custom_rules()
+        if rule_id in rules:
+            return jsonify({"ok": False, "error": "Regla ya existe"}), 409
+        
+        # Crear nueva regla con valores por defecto
+        rules[rule_id] = {
+            "name": data.get("name", "Nueva Regla"),
+            "description": data.get("description", ""),
+            "enabled": data.get("enabled", True),
+            "type": data.get("type", "file_pattern"),
+            "pattern": data.get("pattern", ".*"),
+            "validation_type": data.get("validation_type", "exists"),
+            "validation_pattern": data.get("validation_pattern", ""),
+            "error_message": data.get("error_message", "Validación fallida"),
+            "severity": data.get("severity", "warning")
+        }
+        
+        save_custom_rules(rules)
+        invalidate_prs_cache()
+        return jsonify({"ok": True, "rule": rules[rule_id]})
+    except Exception as e:
+        logger.error("[validation-rules/custom] POST %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error creando regla"}), 500
+
+
+@app.route("/api/validation-rules/custom/<rule_id>", methods=["DELETE"])
+@require_api_key
+def delete_custom_rule(rule_id):
+    """Elimina una regla personalizada."""
+    try:
+        from integrations.state import load_custom_rules, save_custom_rules
+        
+        rules = load_custom_rules()
+        if rule_id not in rules:
+            return jsonify({"ok": False, "error": "Regla no encontrada"}), 404
+        
+        del rules[rule_id]
+        save_custom_rules(rules)
+        invalidate_prs_cache()
+        return jsonify({"ok": True})
+    except Exception as e:
+        logger.error("[validation-rules/custom] DELETE %s: %s", rule_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error eliminando regla"}), 500
+
+
 @app.route("/api/branch/create", methods=["POST"])
 @require_api_key
 def create_branch():
