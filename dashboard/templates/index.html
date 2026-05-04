@@ -1247,12 +1247,13 @@ let blockedAuthors = [];
 
 function switchTab(tab) {
   currentTab = tab;
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['activos','hoy','ayer','rango','historial'][i] === tab));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['activos','hoy','ayer','rango','historial','rules'][i] === tab));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + tab).classList.add('active');
   document.getElementById('range-inputs').style.display = tab === 'rango' ? 'flex' : 'none';
   document.getElementById('filters').style.display = ['hoy','ayer','rango'].includes(tab) ? 'flex' : 'none';
-  if (tab !== 'rango' && tab !== 'historial') reload();
+  if (tab === 'rules') loadAllRules();
+  else if (tab !== 'rango' && tab !== 'historial') reload();
 }
 
 function reload() {
