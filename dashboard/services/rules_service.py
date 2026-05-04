@@ -172,12 +172,14 @@ def update_custom_rule(rule_id, rule_data, changed_by=None, ip_address=None):
         return {"ok": False, "error": str(e)}
 
 
-def delete_custom_rule(rule_id):
+def delete_custom_rule(rule_id, changed_by=None, ip_address=None):
     """
     Elimina una regla personalizada.
     
     Args:
         rule_id: ID de la regla a eliminar
+        changed_by: Usuario que elimina la regla
+        ip_address: IP del usuario
     
     Returns:
         Dict con resultado de la operación
@@ -188,9 +190,16 @@ def delete_custom_rule(rule_id):
         if rule_id not in rules:
             return {"ok": False, "error": f"Regla '{rule_id}' no encontrada"}
         
+        # Guardar valor anterior para auditoría
+        old_value = json.dumps(rules[rule_id])
+        
         del rules[rule_id]
         save_custom_rules(rules)
-        logger.info(f"Regla personalizada '{rule_id}' eliminada")
+        
+        # Registrar eliminación en historial
+        log_rule_change(rule_id, "custom", "delete", old_value, None, changed_by, ip_address)
+        
+        logger.info(f"Regla personalizada '{rule_id}' eliminada por {changed_by or 'unknown'}")
         
         return {"ok": True}
     except Exception as e:
