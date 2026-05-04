@@ -40,6 +40,11 @@ from services.deploy_service import get_deploy_status, poll_deploy_background
 from services.sheets_service import (
     SHEET_HEADERS, pr_to_row, append_pr, update_deploy, export_range,
 )
+from services.rules_service import (
+    get_all_rules, get_branch_rules, get_custom_rules,
+    update_branch_rule, create_custom_rule, update_custom_rule,
+    delete_custom_rule, toggle_rule,
+)
 
 logging.basicConfig(
     level=logging.INFO,
