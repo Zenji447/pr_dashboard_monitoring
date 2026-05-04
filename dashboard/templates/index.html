@@ -1853,14 +1853,18 @@ async function saveValidationRules() {
     }
     
     // Guardar en el servidor
-    const res = await fetch("/api/config/pr-validation-rules", {
+    const res = await fetch("/api/validation-rules", {
       method: "POST",
       headers: apiHeaders({"Content-Type": "application/json"}),
-      body: JSON.stringify({ rules: updatedRules })
+      body: JSON.stringify({ 
+        branch_rules: updatedRules,
+        custom_rules: customRules
+      })
     }).then(r => r.json());
     
     if (res.ok) {
-      validationRules = res.rules;
+      validationRules = res.rules.branch_rules || {};
+      customRules = res.rules.custom_rules || {};
       renderValidationRulesSummary();
       status.style.color = "var(--green)";
       status.textContent = lang === 'es' ? "✓ Reglas guardadas correctamente" : "✓ Rules saved successfully";
