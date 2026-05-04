@@ -235,19 +235,28 @@ def _try_auto_complete(pr_id, report, state, token):
     }
     append_pr(sheet_pr, auto_approved=int(pr_id) in state.get("auto_approved", []), approval_date=approval_date)
 
-    def _notify():
-        thread_ts = wait_for_pr_thread(int(pr_id))
-        if thread_ts:
-            try:
-                slack_api("chat.postMessage", {
-                    "channel": SLACK_PR_CHANNEL,
-                    "thread_ts": thread_ts,
-                    "text": "🚀 PR integrado — si no hay conflicto el despliegue estará en curso, te avisamos cuando termine.",
-                })
-            except Exception as e:
-                logger.error("[auto-complete] Slack PR %s: %s", pr_id, e)
+    # Notificar solo si no se ha notificado antes
+    completed_notified = state.setdefault("completed_notified", [])
+    if int(pr_id) not in completed_notified:
+        def _notify():
+            thread_ts = wait_for_pr_thread(int(pr_id))
+            if thread_ts:
+                try:
+                    slack_api("chat.postMessage", {
+                        "channel": SLACK_PR_CHANNEL,
+                        "thread_ts": thread_ts,
+                        "text": "🚀 PR integrado — si no hay conflicto el despliegue estará en curso, te avisamos cuando termine.",
+                    })
+                    # Marcar como notificado después de enviar exitosamente
+                    state_inner = load_state()
+                    completed_notified_inner = state_inner.setdefault("completed_notified", [])
+                    if int(pr_id) not in completed_notified_inner:
+                        completed_notified_inner.append(int(pr_id))
+                        save_state(state_inner)
+                except Exception as e:
+                    logger.error("[auto-complete] Slack PR %s: %s", pr_id, e)
 
-    threading.Thread(target=_notify, daemon=True).start()
+        threading.Thread(target=_notify, daemon=True).start()
 
 
 
