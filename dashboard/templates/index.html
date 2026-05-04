@@ -1454,7 +1454,6 @@ function renderValidationRulesSummary() {
   container.innerHTML = targets.map(target => {
     const rule = validationRules[target];
     const enabled = rule.enabled !== false;
-    const sprint = rule.sprint || '—';
     const statusColor = enabled ? '#22c55e' : '#64748b';
     
     return `
