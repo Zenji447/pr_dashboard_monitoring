@@ -443,6 +443,39 @@ def api_branches():
     return jsonify({"ok": True, "branches": ["develop", "develop-pr", "releaseproyecto/r6"]})
 
 
+@app.route("/api/config/pr-validation-rules", methods=["GET"])
+def get_pr_validation_rules_route():
+    """Obtiene las reglas de validación de PR configurables."""
+    try:
+        from integrations.state import load_pr_validation_rules
+        rules = load_pr_validation_rules()
+        return jsonify({"ok": True, "rules": rules})
+    except Exception as e:
+        logger.error("[config/pr-validation-rules] GET %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error cargando reglas"}), 500
+
+
+@app.route("/api/config/pr-validation-rules", methods=["POST"])
+@require_api_key
+def set_pr_validation_rules_route():
+    """Guarda las reglas de validación de PR."""
+    try:
+        from integrations.state import save_pr_validation_rules
+        data = request.get_json(silent=True) or {}
+        rules = data.get("rules", {})
+        
+        # Validación básica
+        if not isinstance(rules, dict):
+            return jsonify({"ok": False, "error": "Formato de reglas inválido"}), 400
+        
+        save_pr_validation_rules(rules)
+        invalidate_prs_cache()  # Invalidar cache para refrescar con nuevas reglas
+        return jsonify({"ok": True, "rules": rules})
+    except Exception as e:
+        logger.error("[config/pr-validation-rules] POST %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error guardando reglas"}), 500
+
+
 @app.route("/api/branch/create", methods=["POST"])
 @require_api_key
 def create_branch():
