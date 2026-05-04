@@ -684,7 +684,11 @@ def create_custom_rule_api():
         if not rule_id:
             return jsonify({"ok": False, "error": "ID de regla requerido"}), 400
         
-        result = create_custom_rule(rule_id, data)
+        # Obtener información del usuario
+        changed_by = request.headers.get("X-User-Name", "api_user")
+        ip_address = request.remote_addr
+        
+        result = create_custom_rule(rule_id, data, changed_by, ip_address)
         
         if not result.get("ok"):
             return jsonify(result), 400
