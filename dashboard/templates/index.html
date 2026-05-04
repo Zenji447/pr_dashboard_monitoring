@@ -763,16 +763,142 @@
 
 <!-- PR Validation Rules Modal -->
 <div class="modal-overlay" id="validation-rules-modal" onclick="if(event.target===this)closeValidationRulesModal()">
-  <div class="modal" style="max-width:700px;max-height:85vh;overflow-y:auto">
+  <div class="modal" style="max-width:900px;max-height:90vh;overflow-y:auto">
     <div class="modal-title">
       <span>⚙️</span>
-      <span data-i18n="prValidationRules">Validaciones de PR</span>
+      <span data-i18n="prValidationRules">Gestión de Reglas de Validación</span>
     </div>
-    <div id="validation-rules-editor" style="display:flex;flex-direction:column;gap:16px"></div>
+    
+    <!-- Tabs para Branch Rules y Custom Rules -->
+    <div class="rules-tabs" style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--border2)">
+      <button class="rules-tab active" onclick="switchRulesTab('branch')" id="tab-branch">
+        🌿 <span data-i18n="branchRules">Reglas de Branch</span>
+      </button>
+      <button class="rules-tab" onclick="switchRulesTab('custom')" id="tab-custom">
+        🔧 <span data-i18n="customRules">Reglas Personalizadas</span>
+      </button>
+    </div>
+
+    <!-- Branch Rules Content -->
+    <div id="branch-rules-content" class="rules-content">
+      <div id="validation-rules-editor" style="display:flex;flex-direction:column;gap:16px"></div>
+    </div>
+
+    <!-- Custom Rules Content -->
+    <div id="custom-rules-content" class="rules-content" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <p style="color:var(--muted);font-size:0.9rem;margin:0">
+          <span data-i18n="customRulesDesc">Crea y gestiona reglas de validación personalizadas</span>
+        </p>
+        <button onclick="openNewCustomRuleModal()" class="btn-add" style="padding:6px 12px">
+          ➕ <span data-i18n="newRule">Nueva Regla</span>
+        </button>
+      </div>
+      <div id="custom-rules-list" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+
     <div class="modal-status" id="modal-validation-status"></div>
     <div class="modal-actions">
       <button onclick="closeValidationRulesModal()" style="background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border2)" data-i18n="cancel">Cancelar</button>
       <button onclick="saveValidationRules()" class="btn-sheets" data-i18n="saveRules">Guardar Reglas</button>
+    </div>
+  </div>
+</div>
+
+<!-- New/Edit Custom Rule Modal -->
+<div class="modal-overlay" id="custom-rule-modal" onclick="if(event.target===this)closeCustomRuleModal()">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-title">
+      <span>🔧</span>
+      <span id="custom-rule-modal-title" data-i18n="newCustomRule">Nueva Regla Personalizada</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div>
+        <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+          <span data-i18n="ruleId">ID de Regla</span> <span style="color:#f87171">*</span>
+        </label>
+        <input type="text" id="custom-rule-id" placeholder="ej: my_custom_rule" 
+               style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+          <span data-i18n="ruleName">Nombre</span> <span style="color:#f87171">*</span>
+        </label>
+        <input type="text" id="custom-rule-name" placeholder="ej: Validación de Manifest" 
+               style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+          <span data-i18n="ruleDescription">Descripción</span>
+        </label>
+        <textarea id="custom-rule-description" rows="2" placeholder="Descripción de la regla..."
+                  style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text);resize:vertical"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+            <span data-i18n="ruleType">Tipo</span>
+          </label>
+          <select id="custom-rule-type" style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+            <option value="file_pattern">Patrón de Archivo</option>
+            <option value="branch_pattern">Patrón de Branch</option>
+            <option value="content">Contenido</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+            <span data-i18n="ruleSeverity">Severidad</span>
+          </label>
+          <select id="custom-rule-severity" style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+            <option value="error">❌ Error</option>
+            <option value="warning">⚠️ Warning</option>
+            <option value="info">ℹ️ Info</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+          <span data-i18n="rulePattern">Patrón (Regex)</span>
+        </label>
+        <input type="text" id="custom-rule-pattern" placeholder="ej: .*manifest.*\.xml" 
+               style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:monospace">
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+          <span data-i18n="ruleValidationType">Tipo de Validación</span>
+        </label>
+        <select id="custom-rule-validation-type" style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+          <option value="exists">Archivo debe existir</option>
+          <option value="not_exists">Archivo no debe existir</option>
+          <option value="content">Validar contenido</option>
+          <option value="requires_test">Requiere test</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+          <span data-i18n="ruleValidationPattern">Patrón de Validación (opcional)</span>
+        </label>
+        <input type="text" id="custom-rule-validation-pattern" placeholder="ej: <version>[\d\.]+</version>" 
+               style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:monospace">
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+          <span data-i18n="ruleErrorMessage">Mensaje de Error</span>
+        </label>
+        <input type="text" id="custom-rule-error-message" placeholder="ej: Manifest sin versión válida" 
+               style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="custom-rule-enabled" checked style="width:18px;height:18px">
+        <label for="custom-rule-enabled" style="color:var(--text);cursor:pointer">
+          <span data-i18n="ruleEnabled">Regla habilitada</span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-status" id="modal-custom-rule-status"></div>
+    <div class="modal-actions">
+      <button onclick="closeCustomRuleModal()" style="background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border2)" data-i18n="cancel">Cancelar</button>
+      <button onclick="saveCustomRule()" class="btn-sheets" data-i18n="saveRule">Guardar Regla</button>
     </div>
   </div>
 </div>
