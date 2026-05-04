@@ -41,7 +41,7 @@ Este módulo permite gestionar de forma dinámica las validaciones de Pull Reque
 1. Abre el dashboard
 2. Ve a la sección "Validaciones de PR" en el sidebar
 3. Haz clic en "⚙️ Configurar Reglas"
-4. En la sección "develop", actualiza el campo "Sprint" (ej: de `sp70` a `sp71`)
+4. En la sección "develop", actualiza el campo "Sprint" (ej: `sp69, sp70` para dos sprints simultáneos o `sp71` para uno solo)
 5. Opcionalmente, actualiza el "Sprint Message"
 6. Haz clic en "Guardar Reglas"
 
