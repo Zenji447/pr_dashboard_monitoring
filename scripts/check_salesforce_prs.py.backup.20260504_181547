@@ -330,26 +330,6 @@ def load_validation_rules():
         }
 
 
-def load_custom_validation_rules():
-    """Carga las reglas de validación personalizadas desde la base de datos."""
-    try:
-        import sys
-        from pathlib import Path
-        # Agregar el directorio del dashboard al path
-        dashboard_path = Path(__file__).parent.parent / "dashboard"
-        if str(dashboard_path) not in sys.path:
-            sys.path.insert(0, str(dashboard_path))
-        
-        from integrations.state import load_custom_rules
-        rules = load_custom_rules()
-        # Filtrar solo reglas habilitadas
-        return {k: v for k, v in rules.items() if v.get("enabled", True)}
-    except Exception as e:
-        # Si falla, retornar diccionario vacío (fallback a hardcoded)
-        return {}
-
-
-
 def classify(pr, changes, token=None):
     title = pr.get("title", "")
     source = normalize_ref(pr.get("sourceRefName", ""))
