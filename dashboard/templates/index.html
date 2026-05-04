@@ -505,6 +505,141 @@
   .modal-input::placeholder { color: var(--muted); }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
   .modal-status { font-size: .75rem; margin-top: 10px; min-height: 18px; }
+
+  /* ── Rules Management ── */
+  .rules-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border2);
+  }
+  .rules-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .rules-tab:hover {
+    color: var(--text);
+    background: rgba(255,255,255,.03);
+  }
+  .rules-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .rules-content {
+    min-height: 300px;
+  }
+  .custom-rule-card {
+    background: rgba(255,255,255,.03);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.2s;
+  }
+  .custom-rule-card:hover {
+    background: rgba(255,255,255,.05);
+    border-color: var(--accent);
+  }
+  .custom-rule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 8px;
+  }
+  .custom-rule-title {
+    font-weight: 600;
+    color: var(--text);
+    font-size: 0.95rem;
+  }
+  .custom-rule-id {
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    background: rgba(255,255,255,.05);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .custom-rule-description {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+    line-height: 1.4;
+  }
+  .custom-rule-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .custom-rule-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .custom-rule-badge.severity-error {
+    background: rgba(239,68,68,.15);
+    color: #f87171;
+    border: 1px solid rgba(239,68,68,.3);
+  }
+  .custom-rule-badge.severity-warning {
+    background: rgba(234,179,8,.15);
+    color: #facc15;
+    border: 1px solid rgba(234,179,8,.3);
+  }
+  .custom-rule-badge.severity-info {
+    background: rgba(59,130,246,.15);
+    color: #60a5fa;
+    border: 1px solid rgba(59,130,246,.3);
+  }
+  .custom-rule-badge.type {
+    background: rgba(168,85,247,.15);
+    color: #c084fc;
+    border: 1px solid rgba(168,85,247,.3);
+  }
+  .custom-rule-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .btn-rule-action {
+    background: rgba(255,255,255,.05);
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-rule-action:hover {
+    background: rgba(255,255,255,.1);
+    color: var(--text);
+    transform: translateY(-1px);
+  }
+  .btn-rule-action.danger:hover {
+    background: rgba(239,68,68,.15);
+    color: #f87171;
+    border-color: rgba(239,68,68,.3);
+  }
+  .rule-pattern {
+    font-family: monospace;
+    font-size: 0.8rem;
+    background: rgba(0,0,0,.3);
+    padding: 4px 8px;
+    border-radius: 4px;
+    color: #a5b4fc;
+    display: inline-block;
+    margin-top: 4px;
+  }
 </style>
 </head>
 <body>
