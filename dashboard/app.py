@@ -656,7 +656,12 @@ def update_branch_rule_api(branch_name):
     """Actualiza una regla de branch."""
     try:
         data = request.get_json(silent=True) or {}
-        result = update_branch_rule(branch_name, data)
+        
+        # Obtener información del usuario
+        changed_by = request.headers.get("X-User-Name", "api_user")
+        ip_address = request.remote_addr
+        
+        result = update_branch_rule(branch_name, data, changed_by, ip_address)
         
         if not result.get("ok"):
             return jsonify(result), 400
