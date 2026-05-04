@@ -871,6 +871,24 @@
       </div>
     </div>
 
+    <div class="panel" id="panel-rules">
+      <div class="toolbar" style="margin-bottom:16px">
+        <button class="btn-primary" onclick="loadAllRules()" data-i18n="btnRefresh">↻ Recargar Reglas</button>
+        <button class="btn-sheets" onclick="openRulesModal()" data-i18n="manageRules">⚙️ Gestionar Reglas</button>
+      </div>
+      <div id="rules-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <h3 style="color:var(--text);margin-bottom:12px;font-size:0.95rem">🌿 Reglas de Branch</h3>
+          <div id="branch-rules-display" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+        <div>
+          <h3 style="color:var(--text);margin-bottom:12px;font-size:0.95rem">🔧 Reglas Personalizadas</h3>
+          <div id="custom-rules-display" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
