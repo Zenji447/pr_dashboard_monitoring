@@ -32,13 +32,15 @@ def get_custom_rules():
     return load_custom_rules()
 
 
-def update_branch_rule(branch_name, rule_data):
+def update_branch_rule(branch_name, rule_data, changed_by=None, ip_address=None):
     """
     Actualiza una regla de branch existente.
     
     Args:
         branch_name: Nombre de la rama (ej: 'develop', 'develop-pr')
         rule_data: Dict con los datos de la regla
+        changed_by: Usuario que hace el cambio
+        ip_address: IP del usuario
     
     Returns:
         Dict con la regla actualizada o error
@@ -49,6 +51,9 @@ def update_branch_rule(branch_name, rule_data):
         if branch_name not in rules:
             return {"ok": False, "error": f"Rama '{branch_name}' no encontrada"}
         
+        # Guardar valor anterior para auditoría
+        old_value = json.dumps(rules[branch_name])
+        
         # Actualizar campos permitidos
         allowed_fields = ["enabled", "release_pattern", "release_message", 
                          "sprints", "sprint_message", "warning_message"]
@@ -58,7 +63,12 @@ def update_branch_rule(branch_name, rule_data):
                 rules[branch_name][field] = rule_data[field]
         
         save_pr_validation_rules(rules)
-        logger.info(f"Regla de branch '{branch_name}' actualizada")
+        
+        # Registrar cambio en historial
+        new_value = json.dumps(rules[branch_name])
+        log_rule_change(branch_name, "branch", "update", old_value, new_value, changed_by, ip_address)
+        
+        logger.info(f"Regla de branch '{branch_name}' actualizada por {changed_by or 'unknown'}")
         
         return {"ok": True, "rule": rules[branch_name]}
     except Exception as e:
