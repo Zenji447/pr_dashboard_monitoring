@@ -1960,9 +1960,9 @@ async function saveValidationRules() {
   }
 }
 
-// ── Custom Rules Management ──────────────────────────────────────────────────
+// ── Custom Rules Management (Legacy Modal) ──────────────────────────────────
 
-function switchRulesTab(tab) {
+function switchValidationRulesTab(tab) {
   currentRulesTab = tab;
   document.getElementById('tab-branch').classList.toggle('active', tab === 'branch');
   document.getElementById('tab-custom').classList.toggle('active', tab === 'custom');
