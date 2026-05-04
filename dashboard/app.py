@@ -706,7 +706,12 @@ def update_custom_rule_api(rule_id):
     """Actualiza una regla personalizada."""
     try:
         data = request.get_json(silent=True) or {}
-        result = update_custom_rule(rule_id, data)
+        
+        # Obtener información del usuario
+        changed_by = request.headers.get("X-User-Name", "api_user")
+        ip_address = request.remote_addr
+        
+        result = update_custom_rule(rule_id, data, changed_by, ip_address)
         
         if not result.get("ok"):
             return jsonify(result), 400
