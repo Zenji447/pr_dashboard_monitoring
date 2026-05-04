@@ -272,7 +272,6 @@ def reject(pr_id):
 def complete(pr_id):
     try:
         state = load_state()
-        completed_notified = state.setdefault("completed_notified", [])
         result = complete_pr(pr_id)
         if result.returncode != 0:
             return jsonify({"ok": False, "error": "Error al completar el PR"}), 500
@@ -283,11 +282,6 @@ def complete(pr_id):
             except json.JSONDecodeError:
                 pass
         author = pr_data.get("createdBy", {}).get("displayName", "")
-        blocked_authors = [a.lower().strip() for a in load_blocked_authors()]
-        if author.lower().strip() not in blocked_authors and pr_id not in completed_notified:
-            notify_pr_slack(pr_id, "complete")
-            completed_notified.append(pr_id)
-            save_state(state)
         merge_commit  = pr_data.get("lastMergeCommit", {}).get("commitId")
         closed_date   = pr_data.get("closedDate", "")
         target_branch = pr_data.get("targetRefName", "")
