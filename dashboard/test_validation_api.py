@@ -72,7 +72,7 @@ def main():
             print("\n✅ Todos los tests pasaron correctamente")
             print("\n📊 Resumen:")
             print(f"  - Ramas configuradas: {len(rules)}")
-            print(f"  - Sprint actual (develop): {rules.get('develop', {}).get('sprint', 'N/A')}")
+            print(f"  - Sprint actual (develop): {', '.join(rules.get('develop', {}).get('sprints', []))}")
             return 0
         else:
             print("\n❌ Algunos tests fallaron")
