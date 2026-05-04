@@ -53,8 +53,8 @@ def make_backup():
 
 def insert_load_custom_rules_function(content):
     """Inserta la función load_custom_validation_rules después de load_validation_rules."""
-    # Buscar el final de la función load_validation_rules
-    pattern = r'(def load_validation_rules\(\):.*?return \{[^}]+\}[^}]+\})'
+    # Buscar el final de la función load_validation_rules (después del último })
+    pattern = r'(def load_validation_rules\(\):.*?return \{[^}]+\}[^}]+\}\s*\})'
     
     match = re.search(pattern, content, re.DOTALL)
     if not match:
@@ -66,9 +66,9 @@ def insert_load_custom_rules_function(content):
         print("ℹ️  La función load_custom_validation_rules ya existe, saltando...")
         return content
     
-    # Insertar después de load_validation_rules
+    # Insertar después de load_validation_rules, con doble salto de línea
     end_pos = match.end()
-    new_content = content[:end_pos] + '\n' + LOAD_CUSTOM_RULES_FUNCTION + content[end_pos:]
+    new_content = content[:end_pos] + '\n\n' + LOAD_CUSTOM_RULES_FUNCTION + '\n' + content[end_pos:]
     
     print("✅ Función load_custom_validation_rules insertada")
     return new_content
