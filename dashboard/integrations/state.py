@@ -15,6 +15,20 @@ def _conn():
     con.execute("""
         CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL)
     """)
+    # Tabla para historial de cambios en reglas
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS rule_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_id TEXT NOT NULL,
+            rule_type TEXT NOT NULL,
+            action TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            changed_by TEXT,
+            changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ip_address TEXT
+        )
+    """)
     con.commit()
     return con
 
