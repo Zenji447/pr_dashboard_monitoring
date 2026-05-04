@@ -2159,6 +2159,333 @@ async function deleteCustomRule(ruleId) {
   }
 }
 
+// ── Rules Management ────────────────────────────────────────────────────────
+
+let allRules = { branch_rules: {}, custom_rules: {} };
+
+async function loadAllRules() {
+  try {
+    const res = await fetch('/api/rules').then(r => r.json());
+    if (res.ok) {
+      allRules = res.rules;
+      renderRulesPanel();
+    }
+  } catch(e) {
+    console.error('Error loading rules:', e);
+  }
+}
+
+function renderRulesPanel() {
+  // Render summary cards
+  const summary = document.getElementById('rules-summary');
+  const branchCount = Object.keys(allRules.branch_rules || {}).length;
+  const customCount = Object.keys(allRules.custom_rules || {}).length;
+  const branchEnabled = Object.values(allRules.branch_rules || {}).filter(r => r.enabled).length;
+  const customEnabled = Object.values(allRules.custom_rules || {}).filter(r => r.enabled).length;
+  
+  summary.innerHTML = `
+    <div class="kpi-card" style="--kpi-color:#22c55e">
+      <div class="kpi-label">🌿 Reglas de Branch</div>
+      <div class="kpi-value">${branchCount}</div>
+      <div class="kpi-sub">${branchEnabled} activas</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#3b82f6">
+      <div class="kpi-label">🔧 Reglas Personalizadas</div>
+      <div class="kpi-value">${customCount}</div>
+      <div class="kpi-sub">${customEnabled} activas</div>
+    </div>
+  `;
+  
+  // Render branch rules
+  const branchDisplay = document.getElementById('branch-rules-display');
+  branchDisplay.innerHTML = Object.entries(allRules.branch_rules || {}).map(([branch, rule]) => `
+    <div class="custom-rule-card">
+      <div class="custom-rule-header">
+        <div>
+          <div class="custom-rule-title">${esc(branch)}</div>
+          <div class="custom-rule-description" style="margin-top:4px">${rule.enabled ? '✅ Activa' : '❌ Inactiva'}</div>
+        </div>
+        <button class="btn-rule-action" onclick="toggleBranchRule('${esc(branch)}')" style="background:${rule.enabled ? 'rgba(34,197,94,.15)' : 'rgba(100,116,139,.1)'}">
+          ${rule.enabled ? '✓ Activa' : '○ Inactiva'}
+        </button>
+      </div>
+      ${rule.release_pattern ? `<div class="rule-pattern">Release: ${esc(rule.release_pattern)}</div>` : ''}
+      ${rule.sprints ? `<div class="rule-pattern">Sprints: ${esc(rule.sprints.join(', '))}</div>` : ''}
+    </div>
+  `).join('');
+  
+  // Render custom rules
+  const customDisplay = document.getElementById('custom-rules-display');
+  customDisplay.innerHTML = Object.entries(allRules.custom_rules || {}).map(([id, rule]) => `
+    <div class="custom-rule-card">
+      <div class="custom-rule-header">
+        <div>
+          <div class="custom-rule-title">${esc(rule.name)}</div>
+          <div class="custom-rule-id">${esc(id)}</div>
+        </div>
+        <button class="btn-rule-action" onclick="toggleCustomRuleFromPanel('${esc(id)}')" style="background:${rule.enabled ? 'rgba(34,197,94,.15)' : 'rgba(100,116,139,.1)'}">
+          ${rule.enabled ? '✓ Activa' : '○ Inactiva'}
+        </button>
+      </div>
+      <div class="custom-rule-description">${esc(rule.description || '')}</div>
+      <div class="custom-rule-meta">
+        <span class="custom-rule-badge severity-${rule.severity}">${rule.severity.toUpperCase()}</span>
+        <span class="custom-rule-badge type">${rule.type}</span>
+      </div>
+      <div class="rule-pattern">${esc(rule.pattern)}</div>
+    </div>
+  `).join('');
+}
+
+async function toggleBranchRule(branch) {
+  try {
+    const res = await fetch(`/api/rules/branch/${encodeURIComponent(branch)}/toggle`, {
+      method: 'POST',
+      headers: apiHeaders()
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      allRules.branch_rules[branch].enabled = res.enabled;
+      renderRulesPanel();
+    }
+  } catch(e) {
+    console.error('Error toggling branch rule:', e);
+  }
+}
+
+async function toggleCustomRuleFromPanel(ruleId) {
+  try {
+    const res = await fetch(`/api/rules/custom/${encodeURIComponent(ruleId)}/toggle`, {
+      method: 'POST',
+      headers: apiHeaders()
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      allRules.custom_rules[ruleId].enabled = res.enabled;
+      renderRulesPanel();
+    }
+  } catch(e) {
+    console.error('Error toggling custom rule:', e);
+  }
+}
+
+function openRulesModal() {
+  document.getElementById('rules-management-modal').classList.add('open');
+  renderRulesModal();
+}
+
+function closeRulesModal() {
+  document.getElementById('rules-management-modal').classList.remove('open');
+}
+
+function renderRulesModal() {
+  // Render branch rules in modal
+  const branchEditor = document.getElementById('branch-rules-editor');
+  branchEditor.innerHTML = Object.entries(allRules.branch_rules || {}).map(([branch, rule]) => `
+    <div style="background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:8px;padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h4 style="color:var(--text);margin:0">${esc(branch)}</h4>
+        <label class="toggle">
+          <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="allRules.branch_rules['${esc(branch)}'].enabled = this.checked; renderRulesModal()">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">Release Pattern</label>
+          <input type="text" value="${esc(rule.release_pattern || '')}" onchange="allRules.branch_rules['${esc(branch)}'].release_pattern = this.value"
+                 style="width:100%;padding:6px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:monospace;font-size:0.85rem">
+        </div>
+        <div>
+          <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">Sprints (comma-separated)</label>
+          <input type="text" value="${esc((rule.sprints || []).join(', '))}" onchange="allRules.branch_rules['${esc(branch)}'].sprints = this.value.split(',').map(s => s.trim()).filter(s => s)"
+                 style="width:100%;padding:6px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:0.85rem">
+        </div>
+      </div>
+    </div>
+  `).join('');
+  
+  // Render custom rules in modal
+  const customList = document.getElementById('custom-rules-modal-list');
+  customList.innerHTML = Object.entries(allRules.custom_rules || {}).map(([id, rule]) => `
+    <div class="custom-rule-card">
+      <div class="custom-rule-header">
+        <div>
+          <div class="custom-rule-title">${esc(rule.name)}</div>
+          <div class="custom-rule-id">${esc(id)}</div>
+        </div>
+        <div class="custom-rule-actions">
+          <button class="btn-rule-action" onclick="editCustomRuleFromModal('${esc(id)}')">✏️ Editar</button>
+          <button class="btn-rule-action danger" onclick="deleteCustomRuleFromModal('${esc(id)}')">🗑️ Eliminar</button>
+        </div>
+      </div>
+      <div class="custom-rule-description">${esc(rule.description || '')}</div>
+      <div class="custom-rule-meta">
+        <span class="custom-rule-badge severity-${rule.severity}">${rule.severity.toUpperCase()}</span>
+        <span class="custom-rule-badge type">${rule.type}</span>
+        <span class="custom-rule-badge" style="background:${rule.enabled ? 'rgba(34,197,94,.15)' : 'rgba(100,116,139,.1)'};color:${rule.enabled ? '#4ade80' : '#94a3b8'};border:1px solid ${rule.enabled ? 'rgba(34,197,94,.3)' : 'rgba(100,116,139,.2)'}">
+          ${rule.enabled ? '✓ Activa' : '○ Inactiva'}
+        </span>
+      </div>
+      <div class="rule-pattern">${esc(rule.pattern)}</div>
+    </div>
+  `).join('');
+}
+
+function switchRulesTab(tab) {
+  document.querySelectorAll('.rules-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${tab}-rules`).classList.add('active');
+  
+  document.getElementById('branch-rules-modal-content').style.display = tab === 'branch' ? 'block' : 'none';
+  document.getElementById('custom-rules-modal-content').style.display = tab === 'custom' ? 'block' : 'none';
+}
+
+function openNewCustomRuleModal() {
+  document.getElementById('custom-rule-id').value = '';
+  document.getElementById('custom-rule-name').value = '';
+  document.getElementById('custom-rule-description').value = '';
+  document.getElementById('custom-rule-type').value = 'file_pattern';
+  document.getElementById('custom-rule-severity').value = 'warning';
+  document.getElementById('custom-rule-pattern').value = '';
+  document.getElementById('custom-rule-validation-type').value = 'exists';
+  document.getElementById('custom-rule-validation-pattern').value = '';
+  document.getElementById('custom-rule-error-message').value = '';
+  document.getElementById('custom-rule-enabled').checked = true;
+  document.getElementById('custom-rule-modal-title').textContent = lang === 'es' ? 'Nueva Regla Personalizada' : 'New Custom Rule';
+  document.getElementById('custom-rule-modal').classList.add('open');
+}
+
+function closeCustomRuleModal() {
+  document.getElementById('custom-rule-modal').classList.remove('open');
+}
+
+function editCustomRuleFromModal(ruleId) {
+  const rule = allRules.custom_rules[ruleId];
+  document.getElementById('custom-rule-id').value = ruleId;
+  document.getElementById('custom-rule-id').disabled = true;
+  document.getElementById('custom-rule-name').value = rule.name;
+  document.getElementById('custom-rule-description').value = rule.description || '';
+  document.getElementById('custom-rule-type').value = rule.type;
+  document.getElementById('custom-rule-severity').value = rule.severity;
+  document.getElementById('custom-rule-pattern').value = rule.pattern;
+  document.getElementById('custom-rule-validation-type').value = rule.validation_type;
+  document.getElementById('custom-rule-validation-pattern').value = rule.validation_pattern || '';
+  document.getElementById('custom-rule-error-message').value = rule.error_message;
+  document.getElementById('custom-rule-enabled').checked = rule.enabled;
+  document.getElementById('custom-rule-modal-title').textContent = lang === 'es' ? 'Editar Regla Personalizada' : 'Edit Custom Rule';
+  document.getElementById('custom-rule-modal').classList.add('open');
+}
+
+async function deleteCustomRuleFromModal(ruleId) {
+  const confirmMsg = lang === 'es' 
+    ? `¿Eliminar la regla "${allRules.custom_rules[ruleId]?.name || ruleId}"?`
+    : `Delete rule "${allRules.custom_rules[ruleId]?.name || ruleId}"?`;
+  
+  if (!confirm(confirmMsg)) return;
+  
+  try {
+    const res = await fetch(`/api/rules/custom/${encodeURIComponent(ruleId)}`, {
+      method: 'DELETE',
+      headers: apiHeaders()
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      delete allRules.custom_rules[ruleId];
+      renderRulesModal();
+      renderRulesPanel();
+    }
+  } catch(e) {
+    console.error('Error deleting rule:', e);
+    alert(lang === 'es' ? 'Error al eliminar la regla' : 'Error deleting rule');
+  }
+}
+
+async function saveCustomRule() {
+  const status = document.getElementById('modal-custom-rule-status');
+  status.textContent = '';
+  
+  const ruleId = document.getElementById('custom-rule-id').value.trim();
+  const isEdit = document.getElementById('custom-rule-id').disabled;
+  
+  if (!ruleId) {
+    status.style.color = 'var(--red)';
+    status.textContent = lang === 'es' ? '✗ ID de regla requerido' : '✗ Rule ID required';
+    return;
+  }
+  
+  const ruleData = {
+    id: ruleId,
+    name: document.getElementById('custom-rule-name').value.trim(),
+    description: document.getElementById('custom-rule-description').value.trim(),
+    type: document.getElementById('custom-rule-type').value,
+    severity: document.getElementById('custom-rule-severity').value,
+    pattern: document.getElementById('custom-rule-pattern').value.trim(),
+    validation_type: document.getElementById('custom-rule-validation-type').value,
+    validation_pattern: document.getElementById('custom-rule-validation-pattern').value.trim(),
+    error_message: document.getElementById('custom-rule-error-message').value.trim(),
+    enabled: document.getElementById('custom-rule-enabled').checked
+  };
+  
+  if (!ruleData.name) {
+    status.style.color = 'var(--red)';
+    status.textContent = lang === 'es' ? '✗ Nombre de regla requerido' : '✗ Rule name required';
+    return;
+  }
+  
+  try {
+    const method = isEdit ? 'PUT' : 'POST';
+    const url = isEdit ? `/api/rules/custom/${encodeURIComponent(ruleId)}` : '/api/rules/custom';
+    
+    const res = await fetch(url, {
+      method,
+      headers: apiHeaders({'Content-Type': 'application/json'}),
+      body: JSON.stringify(ruleData)
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      allRules.custom_rules[ruleId] = res.rule;
+      renderRulesModal();
+      renderRulesPanel();
+      status.style.color = 'var(--green)';
+      status.textContent = lang === 'es' ? '✓ Regla guardada' : '✓ Rule saved';
+      setTimeout(() => closeCustomRuleModal(), 1000);
+    } else {
+      throw new Error(res.error || 'Error desconocido');
+    }
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = `✗ ${e.message}`;
+  }
+}
+
+async function saveAllRules() {
+  const status = document.getElementById('modal-rules-status');
+  status.textContent = lang === 'es' ? 'Guardando...' : 'Saving...';
+  status.style.color = 'var(--muted)';
+  
+  try {
+    const res = await fetch('/api/rules', {
+      method: 'POST',
+      headers: apiHeaders({'Content-Type': 'application/json'}),
+      body: JSON.stringify({
+        branch_rules: allRules.branch_rules,
+        custom_rules: allRules.custom_rules
+      })
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      status.style.color = 'var(--green)';
+      status.textContent = lang === 'es' ? '✓ Cambios guardados' : '✓ Changes saved';
+      setTimeout(() => closeRulesModal(), 1000);
+    } else {
+      throw new Error(res.error || 'Error desconocido');
+    }
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = `✗ ${e.message}`;
+  }
+}
+
 // ── Google Sheets export ─────────────────────────────────────────────────────
 async function exportSheets() {
   const btn = document.getElementById("btn-export");
