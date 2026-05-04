@@ -1056,6 +1056,50 @@
     </div>
   </div>
 </div>
+
+<!-- Rules Management Modal -->
+<div class="modal-overlay" id="rules-management-modal" onclick="if(event.target===this)closeRulesModal()">
+  <div class="modal" style="max-width:1000px;max-height:90vh;overflow-y:auto">
+    <div class="modal-title">
+      <span>⚙️</span>
+      <span data-i18n="manageRules">Gestión de Reglas</span>
+    </div>
+    
+    <!-- Tabs para Branch Rules y Custom Rules -->
+    <div class="rules-tabs">
+      <button class="rules-tab active" onclick="switchRulesTab('branch')" id="tab-branch-rules">
+        🌿 <span data-i18n="branchRules">Reglas de Branch</span>
+      </button>
+      <button class="rules-tab" onclick="switchRulesTab('custom')" id="tab-custom-rules">
+        🔧 <span data-i18n="customRules">Reglas Personalizadas</span>
+      </button>
+    </div>
+
+    <!-- Branch Rules Content -->
+    <div id="branch-rules-modal-content" class="rules-content">
+      <div id="branch-rules-editor" style="display:flex;flex-direction:column;gap:16px"></div>
+    </div>
+
+    <!-- Custom Rules Content -->
+    <div id="custom-rules-modal-content" class="rules-content" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <p style="color:var(--muted);font-size:0.9rem;margin:0">
+          <span data-i18n="customRulesDesc">Crea y gestiona reglas de validación personalizadas</span>
+        </p>
+        <button onclick="openNewCustomRuleModal()" class="btn-add" style="padding:6px 12px">
+          ➕ <span data-i18n="newRule">Nueva Regla</span>
+        </button>
+      </div>
+      <div id="custom-rules-modal-list" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+
+    <div class="modal-status" id="modal-rules-status"></div>
+    <div class="modal-actions">
+      <button onclick="closeRulesModal()" style="background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border2)" data-i18n="cancel">Cancelar</button>
+      <button onclick="saveAllRules()" class="btn-sheets" data-i18n="saveRules">Guardar Cambios</button>
+    </div>
+  </div>
+</div>
   </div>
 </div>
 
