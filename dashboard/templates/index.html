@@ -1427,6 +1427,166 @@ async function saveBlockedBranches() {
   renderBlockedBranches();
 }
 
+// ── PR Validation Rules ──────────────────────────────────────────────────────
+let validationRules = {};
+
+async function loadValidationRules() {
+  try {
+    const res = await fetch("/api/config/pr-validation-rules").then(r => r.json());
+    if (res.ok) {
+      validationRules = res.rules || {};
+      renderValidationRulesSummary();
+    }
+  } catch(e) {
+    console.error("Error loading validation rules:", e);
+  }
+}
+
+function renderValidationRulesSummary() {
+  const container = document.getElementById("validation-rules-list");
+  const targets = Object.keys(validationRules);
+  
+  if (targets.length === 0) {
+    container.innerHTML = `<span style="color:#64748b;font-size:.78rem">${t('loadingConfig')}</span>`;
+    return;
+  }
+  
+  container.innerHTML = targets.map(target => {
+    const rule = validationRules[target];
+    const enabled = rule.enabled !== false;
+    const sprint = rule.sprint || '—';
+    const statusColor = enabled ? '#22c55e' : '#64748b';
+    
+    return `
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:6px;padding:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-weight:600;font-size:.82rem;color:#e2e8f0">${esc(target)}</span>
+          <span style="color:${statusColor};font-size:.72rem">●</span>
+        </div>
+        ${target === 'develop' ? `<div style="font-size:.72rem;color:#94a3b8">Sprint: <span style="color:#60a5fa">${esc(sprint)}</span></div>` : ''}
+        ${rule.warning_message ? `<div style="font-size:.72rem;color:#facc15">⚠️ ${esc(rule.warning_message)}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function openValidationRulesModal() {
+  const modal = document.getElementById("validation-rules-modal");
+  const editor = document.getElementById("validation-rules-editor");
+  
+  // Renderizar editor para cada target
+  const targets = Object.keys(validationRules);
+  editor.innerHTML = targets.map(target => {
+    const rule = validationRules[target];
+    const enabled = rule.enabled !== false;
+    
+    return `
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:8px;padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <h3 style="margin:0;font-size:.95rem;color:#e2e8f0">${esc(target)}</h3>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="rule-${target}-enabled" ${enabled ? 'checked' : ''} 
+                   style="width:16px;height:16px;cursor:pointer">
+            <span style="font-size:.78rem;color:#94a3b8" data-i18n="enabled">${t('enabled')}</span>
+          </label>
+        </div>
+        
+        ${target === 'develop' ? `
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <label style="display:block;font-size:.75rem;color:#94a3b8;margin-bottom:4px" data-i18n="releasePattern">${t('releasePattern')}</label>
+              <input type="text" id="rule-${target}-release-pattern" value="${esc(rule.release_pattern || '')}" 
+                     style="width:100%;padding:8px;background:rgba(0,0,0,.3);border:1px solid var(--border2);border-radius:4px;color:#e2e8f0;font-size:.82rem">
+            </div>
+            <div>
+              <label style="display:block;font-size:.75rem;color:#94a3b8;margin-bottom:4px" data-i18n="releaseMessage">${t('releaseMessage')}</label>
+              <input type="text" id="rule-${target}-release-message" value="${esc(rule.release_message || '')}" 
+                     style="width:100%;padding:8px;background:rgba(0,0,0,.3);border:1px solid var(--border2);border-radius:4px;color:#e2e8f0;font-size:.82rem">
+            </div>
+            <div>
+              <label style="display:block;font-size:.75rem;color:#94a3b8;margin-bottom:4px" data-i18n="sprint">${t('sprint')}</label>
+              <input type="text" id="rule-${target}-sprint" value="${esc(rule.sprint || '')}" 
+                     style="width:100%;padding:8px;background:rgba(0,0,0,.3);border:1px solid var(--border2);border-radius:4px;color:#e2e8f0;font-size:.82rem"
+                     placeholder="sp70">
+            </div>
+            <div>
+              <label style="display:block;font-size:.75rem;color:#94a3b8;margin-bottom:4px" data-i18n="sprintMessage">${t('sprintMessage')}</label>
+              <input type="text" id="rule-${target}-sprint-message" value="${esc(rule.sprint_message || '')}" 
+                     style="width:100%;padding:8px;background:rgba(0,0,0,.3);border:1px solid var(--border2);border-radius:4px;color:#e2e8f0;font-size:.82rem">
+            </div>
+          </div>
+        ` : target === 'develop-pr' ? `
+          <div>
+            <label style="display:block;font-size:.75rem;color:#94a3b8;margin-bottom:4px" data-i18n="warningMessage">${t('warningMessage')}</label>
+            <input type="text" id="rule-${target}-warning-message" value="${esc(rule.warning_message || '')}" 
+                   style="width:100%;padding:8px;background:rgba(0,0,0,.3);border:1px solid var(--border2);border-radius:4px;color:#e2e8f0;font-size:.82rem">
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+  
+  modal.classList.add("open");
+}
+
+function closeValidationRulesModal() {
+  document.getElementById("validation-rules-modal").classList.remove("open");
+  document.getElementById("modal-validation-status").textContent = "";
+}
+
+async function saveValidationRules() {
+  const status = document.getElementById("modal-validation-status");
+  status.style.color = "var(--muted)";
+  status.textContent = lang === 'es' ? "Guardando..." : "Saving...";
+  
+  try {
+    // Recopilar datos del formulario
+    const updatedRules = {};
+    const targets = Object.keys(validationRules);
+    
+    for (const target of targets) {
+      const enabled = document.getElementById(`rule-${target}-enabled`)?.checked !== false;
+      
+      if (target === 'develop') {
+        updatedRules[target] = {
+          enabled,
+          release_pattern: document.getElementById(`rule-${target}-release-pattern`)?.value || '',
+          release_message: document.getElementById(`rule-${target}-release-message`)?.value || '',
+          sprint: document.getElementById(`rule-${target}-sprint`)?.value || '',
+          sprint_message: document.getElementById(`rule-${target}-sprint-message`)?.value || ''
+        };
+      } else if (target === 'develop-pr') {
+        updatedRules[target] = {
+          enabled,
+          warning_message: document.getElementById(`rule-${target}-warning-message`)?.value || ''
+        };
+      } else {
+        updatedRules[target] = { enabled };
+      }
+    }
+    
+    // Guardar en el servidor
+    const res = await fetch("/api/config/pr-validation-rules", {
+      method: "POST",
+      headers: apiHeaders({"Content-Type": "application/json"}),
+      body: JSON.stringify({ rules: updatedRules })
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      validationRules = res.rules;
+      renderValidationRulesSummary();
+      status.style.color = "var(--green)";
+      status.textContent = lang === 'es' ? "✓ Reglas guardadas correctamente" : "✓ Rules saved successfully";
+      setTimeout(() => closeValidationRulesModal(), 1500);
+    } else {
+      throw new Error(res.error || "Error desconocido");
+    }
+  } catch(e) {
+    status.style.color = "var(--red)";
+    status.textContent = `✗ ${e.message}`;
+  }
+}
+
 // ── Google Sheets export ─────────────────────────────────────────────────────
 async function exportSheets() {
   const btn = document.getElementById("btn-export");
