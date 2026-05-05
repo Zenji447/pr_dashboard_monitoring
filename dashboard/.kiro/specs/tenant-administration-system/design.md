@@ -583,6 +583,214 @@ CREATE TABLE tenant_settings (
 - Integration functions handle gracefully (skip notifications, etc.)
 **Recovery**: Admin should update tenant configuration
 
+## Correctness Properties
+
+*A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+
+### Property 1: Database Retrieval Caching
+
+*For any* tenant retrieved from the database by API Key, the tenant SHALL be stored in the Tenant_Cache for subsequent lookups.
+
+**Validates: Requirements 1.7**
+
+### Property 2: Thread-Safe Context Isolation
+
+*For any* set of concurrent requests with different tenants, each request SHALL see only its own tenant in the Tenant_Context without interference from other requests.
+
+**Validates: Requirements 2.2**
+
+### Property 3: API Key Format and Uniqueness
+
+*For any* generated API Key, it SHALL start with "prm_", have exactly 43 total characters, and be unique across all tenants.
+
+**Validates: Requirements 3.2, 7.1, 10.6, 13.3**
+
+### Property 4: Required Field Validation
+
+*For any* tenant creation attempt missing subdomain, company_name, or plan fields, the system SHALL reject the creation.
+
+**Validates: Requirements 3.1**
+
+### Property 5: Subdomain Uniqueness Constraint
+
+*For any* attempt to create a tenant with a subdomain that already exists, the system SHALL return a 409 Conflict error.
+
+**Validates: Requirements 3.3, 10.2**
+
+### Property 6: Plan Enum Validation
+
+*For any* plan value that is not one of "basic", "pro", or "enterprise", the system SHALL reject the tenant creation or update.
+
+**Validates: Requirements 3.4, 5.4, 10.4**
+
+### Property 7: Related Configuration Persistence
+
+*For any* tenant created with Azure_Config, integrations, or settings, the system SHALL persist all related records and make them retrievable through the tenant object.
+
+**Validates: Requirements 3.5, 3.6, 3.7**
+
+### Property 8: Complete Tenant Object Return
+
+*For any* successful tenant creation, the system SHALL return a complete tenant object including id, subdomain, company_name, api_key, plan, status, and created_at.
+
+**Validates: Requirements 3.8**
+
+### Property 9: Default Status Initialization
+
+*For any* tenant created without an explicit status field, the system SHALL set the status to 'active'.
+
+**Validates: Requirements 3.10**
+
+### Property 10: Active Tenant Filtering
+
+*For any* tenant list request, the system SHALL return only tenants with status 'active', excluding all inactive tenants.
+
+**Validates: Requirements 4.1**
+
+### Property 11: Tenant List Completeness
+
+*For any* tenant in the list response, the system SHALL include all required fields: id, subdomain, company_name, api_key, plan, status, created_at, Azure_Config, and active integrations count.
+
+**Validates: Requirements 4.2, 4.3, 4.4**
+
+### Property 12: API Key Lookup for Active Tenants
+
+*For any* active tenant, lookup by its API Key SHALL return the tenant object.
+
+**Validates: Requirements 4.5**
+
+### Property 13: ID Lookup Regardless of Status
+
+*For any* tenant (active or inactive), lookup by its ID SHALL return the tenant object.
+
+**Validates: Requirements 4.7**
+
+### Property 14: Tenant Update Success
+
+*For any* tenant and any valid updates to company_name, plan, status, Azure_Config, or integrations, the update SHALL succeed and return the updated tenant object.
+
+**Validates: Requirements 5.1, 5.2, 5.3, 5.9**
+
+### Property 15: Status Enum Validation
+
+*For any* status value that is not one of "active" or "inactive", the system SHALL reject the tenant update.
+
+**Validates: Requirements 5.5, 10.5**
+
+### Property 16: Configuration Upsert Behavior
+
+*For any* tenant, updating Azure_Config or integrations SHALL succeed whether the configuration already exists or not (INSERT OR REPLACE behavior).
+
+**Validates: Requirements 5.7, 5.8**
+
+### Property 17: Cache Invalidation on Mutations
+
+*For any* tenant update, deletion, or API Key regeneration, the system SHALL clear the Tenant_Cache to ensure subsequent lookups retrieve fresh data.
+
+**Validates: Requirements 5.6, 6.3, 7.3**
+
+### Property 18: Soft Delete Data Preservation
+
+*For any* tenant deletion, the system SHALL set status to 'inactive' while preserving all tenant data including configuration and settings.
+
+**Validates: Requirements 6.1, 6.2, 13.6**
+
+### Property 19: Inactive Tenant Inaccessibility
+
+*For any* tenant with status 'inactive', lookup by API Key SHALL return None.
+
+**Validates: Requirements 6.4**
+
+### Property 20: API Key Regeneration Updates Record
+
+*For any* tenant, regenerating the API Key SHALL update the tenant record with a new unique API Key and return the new key.
+
+**Validates: Requirements 7.2, 7.4**
+
+### Property 21: Old API Key Invalidation
+
+*For any* tenant with a regenerated API Key, lookup using the old API Key SHALL return None.
+
+**Validates: Requirements 7.5**
+
+### Property 22: Valid API Key Grants Access
+
+*For any* valid tenant API Key, requests to protected endpoints SHALL be processed successfully.
+
+**Validates: Requirements 8.3**
+
+### Property 23: Subdomain Format Validation
+
+*For any* subdomain containing characters other than lowercase letters, numbers, and hyphens, the system SHALL reject the tenant creation or update.
+
+**Validates: Requirements 10.1**
+
+### Property 24: Non-Empty String Validation
+
+*For any* company_name that is an empty string or only whitespace, the system SHALL reject the tenant creation or update.
+
+**Validates: Requirements 10.3**
+
+### Property 25: Azure Config Field Validation
+
+*For any* Azure_Config with empty or missing org_url, project, or repository fields, the system SHALL reject the configuration.
+
+**Validates: Requirements 10.7**
+
+### Property 26: Integration Type Enum Validation
+
+*For any* integration_type that is not one of "slack", "sheets", "email", or "webhook", the system SHALL reject the integration configuration.
+
+**Validates: Requirements 10.8**
+
+### Property 27: Integration Config JSON Validation
+
+*For any* integration config that is not valid JSON, the system SHALL reject the integration configuration.
+
+**Validates: Requirements 10.9**
+
+### Property 28: Integration Configuration Persistence
+
+*For any* tenant with integration configurations (Slack, Google Sheets, email, webhook), the system SHALL store the integration type, enabled status, and config, and make them retrievable.
+
+**Validates: Requirements 14.1, 14.2, 14.3, 14.4**
+
+### Property 29: Integration Existence Check
+
+*For any* tenant, calling has_integration(type) SHALL return true if and only if the integration exists and is enabled.
+
+**Validates: Requirements 14.5**
+
+### Property 30: Integration Retrieval for Enabled
+
+*For any* tenant with an enabled integration, calling get_integration(type) SHALL return the integration config.
+
+**Validates: Requirements 14.6**
+
+### Property 31: Integration Retrieval for Disabled
+
+*For any* tenant with a disabled integration or no integration of that type, calling get_integration(type) SHALL return None.
+
+**Validates: Requirements 14.7**
+
+### Property 32: Default Settings Initialization
+
+*For any* tenant created without explicit settings, the system SHALL initialize settings with language='es', timezone='America/Mexico_City', blocked_authors=[], and blocked_branches=[].
+
+**Validates: Requirements 15.1, 15.2, 15.3, 15.4**
+
+### Property 33: JSON Array Parsing for Blocked Lists
+
+*For any* tenant settings, blocked_authors and blocked_branches SHALL be parsed as JSON arrays.
+
+**Validates: Requirements 15.5, 15.6**
+
+### Property 34: Optional Settings Availability
+
+*For any* tenant with logo_url or primary_color settings, the system SHALL make these values accessible through the tenant settings object.
+
+**Validates: Requirements 15.7, 15.8**
+
 ## Testing Strategy
 
 ### Unit Testing Approach
