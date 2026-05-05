@@ -366,3 +366,132 @@ def rollback_rule_change(history_id):
         
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+
+# ── Dynamic Branch Management ────────────────────────────────────────────────
+
+def load_managed_branches():
+    """
+    Carga la lista de ramas gestionadas en el sistema.
+    Cada rama puede tener reglas de validación y estar en auto-aprobación.
+    
+    Returns:
+        Lista de nombres de ramas
+    """
+    default_branches = ["develop", "develop-pr", "releaseproyecto/r6"]
+    return get_config("managed_branches", default_branches)
+
+
+def save_managed_branches(branches):
+    """
+    Guarda la lista de ramas gestionadas.
+    
+    Args:
+        branches: Lista de nombres de ramas
+    """
+    set_config("managed_branches", branches)
+
+
+def add_managed_branch(branch_name, branch_config=None):
+    """
+    Agrega una nueva rama al sistema con configuración opcional.
+    
+    Args:
+        branch_name: Nombre de la rama
+        branch_config: Dict con configuración de reglas (opcional)
+    
+    Returns:
+        Dict con resultado de la operación
+    """
+    try:
+        # Agregar a la lista de ramas gestionadas
+        branches = load_managed_branches()
+        if branch_name in branches:
+            return {"ok": False, "error": f"La rama '{branch_name}' ya existe"}
+        
+        branches.append(branch_name)
+        save_managed_branches(branches)
+        
+        # Si se proporciona configuración, agregarla a las reglas
+        if branch_config:
+            rules = load_pr_validation_rules()
+            rules[branch_name] = branch_config
+            save_pr_validation_rules(rules)
+        else:
+            # Configuración por defecto
+            rules = load_pr_validation_rules()
+            rules[branch_name] = {
+                "enabled": True,
+                "warning_message": f"PR hacia {branch_name}"
+            }
+            save_pr_validation_rules(rules)
+        
+        return {"ok": True, "branch": branch_name}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def remove_managed_branch(branch_name):
+    """
+    Elimina una rama del sistema.
+    
+    Args:
+        branch_name: Nombre de la rama a eliminar
+    
+    Returns:
+        Dict con resultado de la operación
+    """
+    try:
+        # Remover de la lista de ramas gestionadas
+        branches = load_managed_branches()
+        if branch_name not in branches:
+            return {"ok": False, "error": f"La rama '{branch_name}' no existe"}
+        
+        branches.remove(branch_name)
+        save_managed_branches(branches)
+        
+        # Remover de auto-aprobación si está ahí
+        auto_config = load_auto_approve_config()
+        if branch_name in auto_config.get("branches", []):
+            auto_config["branches"].remove(branch_name)
+            save_auto_approve_config(auto_config)
+        
+        # Remover de reglas de validación
+        rules = load_pr_validation_rules()
+        if branch_name in rules:
+            del rules[branch_name]
+            save_pr_validation_rules(rules)
+        
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def get_branch_info(branch_name):
+    """
+    Obtiene información completa de una rama.
+    
+    Args:
+        branch_name: Nombre de la rama
+    
+    Returns:
+        Dict con información de la rama
+    """
+    branches = load_managed_branches()
+    if branch_name not in branches:
+        return {"ok": False, "error": f"La rama '{branch_name}' no existe"}
+    
+    rules = load_pr_validation_rules()
+    auto_config = load_auto_approve_config()
+    
+    return {
+        "ok": True,
+        "branch": {
+            "name": branch_name,
+            "exists": True,
+            "has_rules": branch_name in rules,
+            "rules": rules.get(branch_name, {}),
+            "in_auto_approve": branch_name in auto_config.get("branches", []),
+            "auto_approve_enabled": auto_config.get("enabled", False)
+        }
+    }
