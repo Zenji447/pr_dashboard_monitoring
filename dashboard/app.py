@@ -35,6 +35,9 @@ from integrations.state import (
     load_blocked_authors, save_blocked_authors,
     load_blocked_branches, save_blocked_branches,
 )
+from integrations.tenant_context import (
+    get_tenant_by_api_key, set_current_tenant, get_current_tenant
+)
 from services.pr_service import get_prs, invalidate_prs_cache
 from services.deploy_service import get_deploy_status, poll_deploy_background
 from services.sheets_service import (
