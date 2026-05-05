@@ -1071,7 +1071,7 @@ def export_sheets():
 # ── Tenant Management API ────────────────────────────────────────────────────
 
 @app.route("/api/tenants", methods=["GET"])
-@require_api_key
+@require_tenant_api_key
 def list_tenants():
     """Lista todos los tenants."""
     try:
