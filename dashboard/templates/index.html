@@ -2830,6 +2830,9 @@ async function saveNewBranch() {
     status.textContent = lang === 'es' ? '✅ Rama creada exitosamente' : '✅ Branch created successfully';
     status.style.color = 'var(--green)';
     
+    // Recargar el sidebar de auto-aprobación para mostrar la nueva rama
+    await loadAutoApproveConfig();
+    
     setTimeout(() => {
       closeAddBranchModal();
       loadManagedBranches();
