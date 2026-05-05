@@ -4,7 +4,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from integrations.azure import ORG_URL, PROJECT, api_azure, check_token, get_token
+from integrations.azure import get_org_url, get_project, api_azure, check_token, get_token
 from utils import retry
 
 logger = logging.getLogger("pr_dashboard")
