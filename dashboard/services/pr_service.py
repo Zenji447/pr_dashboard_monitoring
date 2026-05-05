@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 from check_salesforce_prs import classify, fetch_changes, normalize_ref, get_my_vote
 
 from integrations.azure import (
-    ORG_URL, PROJECT, REPOSITORY, check_token, get_pr_policy_status,
+    get_org_url, get_project, get_repository, check_token, get_pr_policy_status,
     get_pr_ta_reviewers, list_active_prs, set_pr_vote, TokenExpiredError
 )
 from integrations.slack import (

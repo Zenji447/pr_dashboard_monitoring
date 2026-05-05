@@ -125,39 +125,39 @@ def set_pr_vote(pr_id, vote):
     """vote: 'approve' | 'reject'"""
     return subprocess.run([
         "az", "repos", "pr", "set-vote", "--id", str(pr_id),
-        "--vote", vote, "--org", ORG_URL, "-o", "json"
+        "--vote", vote, "--org", get_org_url(), "-o", "json"
     ], capture_output=True, text=True)
 
 
 def complete_pr(pr_id):
     return subprocess.run([
         "az", "repos", "pr", "update", "--id", str(pr_id),
-        "--status", "completed", "--org", ORG_URL, "-o", "json"
+        "--status", "completed", "--org", get_org_url(), "-o", "json"
     ], capture_output=True, text=True)
 
 
 def add_pr_comment(pr_id, comment):
     subprocess.run([
         "az", "repos", "pr", "comment", "add", "--id", str(pr_id),
-        "--comment", comment, "--org", ORG_URL, "--project", PROJECT, "-o", "none"
+        "--comment", comment, "--org", get_org_url(), "--project", get_project(), "-o", "none"
     ])
 
 
 def get_pr_reviewers(pr_id, token):
-    url = (f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}"
+    url = (f"{get_org_url()}/{get_project()}/_apis/git/repositories/{get_repository()}"
            f"/pullRequests/{pr_id}/reviewers?api-version=7.1")
     return api_azure(url, token).get("value", [])
 
 
 def get_pr_threads(pr_id, token):
-    url = (f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}"
+    url = (f"{get_org_url()}/{get_project()}/_apis/git/repositories/{get_repository()}"
            f"/pullRequests/{pr_id}/threads?api-version=7.1")
     return api_azure(url, token).get("value", [])
 
 
 def get_pr_by_id(pr_id, token):
     """Obtiene un PR específico por ID — evita listar todos los PRs."""
-    url = (f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}"
+    url = (f"{get_org_url()}/{get_project()}/_apis/git/repositories/{get_repository()}"
            f"/pullRequests/{pr_id}?api-version=7.1")
     return api_azure(url, token)
 
@@ -167,11 +167,11 @@ def get_policy_evaluations(pr_id, token):
     if _project_id_cache is None:
         _project_id_cache = subprocess.check_output([
             "az", "devops", "project", "show",
-            "--project", PROJECT, "--org", ORG_URL, "--query", "id", "-o", "tsv"
+            "--project", get_project(), "--org", get_org_url(), "--query", "id", "-o", "tsv"
         ], text=True).strip()
     from urllib.parse import quote
     artifact_id = f"vstfs:///CodeReview/CodeReviewId/{_project_id_cache}/{pr_id}"
-    url = (f"{ORG_URL}/{PROJECT}/_apis/policy/evaluations"
+    url = (f"{get_org_url()}/{get_project()}/_apis/policy/evaluations"
            f"?artifactId={quote(artifact_id, safe='')}&api-version=7.1-preview.1")
     return api_azure(url, token).get("value", [])
 
