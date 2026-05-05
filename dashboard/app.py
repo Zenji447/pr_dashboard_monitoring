@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from utils import validate_date, minutes_between, retry
 from integrations.azure import (
-    ORG_URL, PROJECT, REPOSITORY, check_token, get_token, invalidate_token,
+    get_org_url, get_project, get_repository, check_token, get_token, invalidate_token,
     get_pr_policy_status, get_pr_approval_date, get_pr_ta_reviewers,
     list_completed_prs, complete_pr, set_pr_vote, add_pr_comment,
     normalize_ref, TokenExpiredError,
