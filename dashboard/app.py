@@ -149,6 +149,16 @@ def health():
     return jsonify({"ok": True, "status": "healthy", "ts": datetime.now(timezone.utc).isoformat()})
 
 
+@app.route("/api/cache/clear", methods=["POST"])
+@require_api_key
+def clear_cache():
+    """Limpia el cache de tenants y PRs"""
+    from integrations.tenant_context import clear_tenant_cache
+    clear_tenant_cache()
+    invalidate_prs_cache()
+    return jsonify({"ok": True, "message": "Cache limpiado correctamente"})
+
+
 @app.route("/api/auth/login", methods=["POST"])
 @require_api_key
 def auth_login():
