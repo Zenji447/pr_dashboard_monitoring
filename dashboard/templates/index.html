@@ -915,6 +915,52 @@
       </div>
     </div>
 
+    <div class="panel" id="panel-admin">
+      <div class="toolbar" style="margin-bottom:16px">
+        <button class="btn-primary" onclick="loadTenants()" data-i18n="btnRefresh">↻ Recargar</button>
+        <button class="btn-sheets" onclick="openCreateTenantModal()" data-i18n="createTenant">➕ Nuevo Cliente</button>
+      </div>
+      
+      <div id="tenants-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:20px">
+        <div class="summary-card">
+          <div class="summary-number" id="total-tenants">-</div>
+          <div class="summary-label">Total Clientes</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-number" id="active-tenants">-</div>
+          <div class="summary-label">Activos</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-number" id="enterprise-tenants">-</div>
+          <div class="summary-label">Enterprise</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-number" id="integrations-count">-</div>
+          <div class="summary-label">Integraciones</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Empresa</th>
+              <th>Subdominio</th>
+              <th>Plan</th>
+              <th>Azure DevOps</th>
+              <th>Integraciones</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tenants-table-body">
+            <tr><td colspan="8" style="color:#64748b;text-align:center;padding:40px" data-i18n="loading">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
   </main>
 </div>
 
