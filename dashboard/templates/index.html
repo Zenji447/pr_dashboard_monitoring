@@ -3072,6 +3072,290 @@ async function deleteBranch(branchName) {
   }
 }
 
+// ── Tenant Management Functions ──────────────────────────────────────────────
+
+let allTenants = [];
+
+async function loadTenants() {
+  try {
+    const res = await fetch('/api/tenants', { headers: apiHeaders() }).then(r => r.json());
+    if (res.ok) {
+      allTenants = res.tenants;
+      renderTenantsPanel();
+    } else {
+      throw new Error(res.error || 'Error cargando tenants');
+    }
+  } catch(e) {
+    console.error('Error loading tenants:', e);
+    document.getElementById('tenants-table-body').innerHTML = 
+      `<tr><td colspan="8" style="color:var(--red);text-align:center;padding:40px">❌ ${e.message}</td></tr>`;
+  }
+}
+
+function renderTenantsPanel() {
+  // Render summary cards
+  const totalTenants = allTenants.length;
+  const activeTenants = allTenants.filter(t => t.status === 'active').length;
+  const enterpriseTenants = allTenants.filter(t => t.plan === 'enterprise').length;
+  const totalIntegrations = allTenants.reduce((sum, t) => sum + (t.active_integrations || 0), 0);
+  
+  document.getElementById('total-tenants').textContent = totalTenants;
+  document.getElementById('active-tenants').textContent = activeTenants;
+  document.getElementById('enterprise-tenants').textContent = enterpriseTenants;
+  document.getElementById('integrations-count').textContent = totalIntegrations;
+  
+  // Render table
+  const tbody = document.getElementById('tenants-table-body');
+  if (allTenants.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:40px">No hay clientes configurados</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = allTenants.map(tenant => {
+    const statusColor = tenant.status === 'active' ? 'var(--green)' : 'var(--muted)';
+    const planColor = tenant.plan === 'enterprise' ? 'var(--accent)' : tenant.plan === 'pro' ? 'var(--yellow)' : 'var(--muted)';
+    const azureConfig = tenant.azure_config;
+    const azureText = azureConfig ? `${azureConfig.project}` : 'No configurado';
+    
+    return `
+      <tr>
+        <td style="font-family:monospace;color:var(--accent)">${tenant.id}</td>
+        <td>
+          <div style="font-weight:600">${esc(tenant.company_name)}</div>
+          <div style="font-size:0.8rem;color:var(--muted)">${esc(tenant.subdomain)}</div>
+        </td>
+        <td style="font-family:monospace;color:var(--muted)">${esc(tenant.subdomain)}</td>
+        <td>
+          <span style="color:${planColor};font-weight:600;text-transform:uppercase;font-size:0.8rem">
+            ${tenant.plan}
+          </span>
+        </td>
+        <td style="font-size:0.9rem">${esc(azureText)}</td>
+        <td style="text-align:center">
+          <span style="background:rgba(59,130,246,.15);color:var(--accent);padding:2px 8px;border-radius:12px;font-size:0.8rem">
+            ${tenant.active_integrations || 0}
+          </span>
+        </td>
+        <td>
+          <span style="color:${statusColor};font-weight:600;font-size:0.9rem">
+            ${tenant.status === 'active' ? '✓ Activo' : '○ Inactivo'}
+          </span>
+        </td>
+        <td>
+          <div style="display:flex;gap:4px">
+            <button onclick="openEditTenantModal(${tenant.id})" class="btn-rule-action" style="background:rgba(59,130,246,.15);padding:4px 8px;font-size:0.8rem">
+              ✏️ Editar
+            </button>
+            <button onclick="deleteTenant(${tenant.id})" class="btn-rule-action" style="background:rgba(239,68,68,.15);padding:4px 8px;font-size:0.8rem">
+              🗑️ Eliminar
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openCreateTenantModal() {
+  // Clear form
+  document.getElementById('tenant-company-name').value = '';
+  document.getElementById('tenant-subdomain').value = '';
+  document.getElementById('tenant-plan').value = 'enterprise';
+  document.getElementById('tenant-org-url').value = '';
+  document.getElementById('tenant-project').value = '';
+  document.getElementById('tenant-repository').value = '';
+  document.getElementById('tenant-slack-enabled').checked = false;
+  document.getElementById('tenant-slack-channel').value = '';
+  document.getElementById('tenant-sheets-enabled').checked = false;
+  document.getElementById('tenant-sheets-id').value = '';
+  document.getElementById('create-tenant-status').textContent = '';
+  
+  document.getElementById('create-tenant-modal').style.display = 'flex';
+}
+
+function closeCreateTenantModal() {
+  document.getElementById('create-tenant-modal').style.display = 'none';
+}
+
+async function submitCreateTenant() {
+  const status = document.getElementById('create-tenant-status');
+  status.textContent = 'Creando cliente...';
+  status.style.color = 'var(--accent)';
+  
+  try {
+    const data = {
+      company_name: document.getElementById('tenant-company-name').value.trim(),
+      subdomain: document.getElementById('tenant-subdomain').value.trim(),
+      plan: document.getElementById('tenant-plan').value,
+      azure_config: {
+        org_url: document.getElementById('tenant-org-url').value.trim(),
+        project: document.getElementById('tenant-project').value.trim(),
+        repository: document.getElementById('tenant-repository').value.trim()
+      },
+      integrations: {}
+    };
+    
+    // Validar campos requeridos
+    if (!data.company_name || !data.subdomain) {
+      throw new Error('Nombre de empresa y subdominio son requeridos');
+    }
+    
+    // Agregar integraciones si están habilitadas
+    if (document.getElementById('tenant-slack-enabled').checked) {
+      data.integrations.slack = {
+        enabled: true,
+        config: {
+          channel: document.getElementById('tenant-slack-channel').value.trim()
+        }
+      };
+    }
+    
+    if (document.getElementById('tenant-sheets-enabled').checked) {
+      data.integrations.sheets = {
+        enabled: true,
+        config: {
+          spreadsheet_id: document.getElementById('tenant-sheets-id').value.trim()
+        }
+      };
+    }
+    
+    const res = await fetch('/api/tenants', {
+      method: 'POST',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(data)
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      status.style.color = 'var(--green)';
+      status.textContent = `✓ Cliente creado exitosamente. API Key: ${res.tenant.api_key}`;
+      
+      // Recargar la lista de tenants
+      setTimeout(() => {
+        closeCreateTenantModal();
+        loadTenants();
+      }, 2000);
+    } else {
+      throw new Error(res.error || 'Error creando cliente');
+    }
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = `❌ ${e.message}`;
+  }
+}
+
+function openEditTenantModal(tenantId) {
+  const tenant = allTenants.find(t => t.id === tenantId);
+  if (!tenant) return;
+  
+  // Llenar formulario
+  document.getElementById('edit-tenant-id').value = tenant.id;
+  document.getElementById('edit-tenant-company-name').value = tenant.company_name;
+  document.getElementById('edit-tenant-plan').value = tenant.plan;
+  document.getElementById('edit-tenant-status').value = tenant.status;
+  document.getElementById('edit-tenant-api-key').value = tenant.api_key;
+  
+  if (tenant.azure_config) {
+    document.getElementById('edit-tenant-org-url').value = tenant.azure_config.org_url || '';
+    document.getElementById('edit-tenant-project').value = tenant.azure_config.project || '';
+    document.getElementById('edit-tenant-repository').value = tenant.azure_config.repository || '';
+  }
+  
+  document.getElementById('edit-tenant-status-msg').textContent = '';
+  document.getElementById('edit-tenant-modal').style.display = 'flex';
+}
+
+function closeEditTenantModal() {
+  document.getElementById('edit-tenant-modal').style.display = 'none';
+}
+
+async function submitEditTenant() {
+  const status = document.getElementById('edit-tenant-status-msg');
+  status.textContent = 'Guardando cambios...';
+  status.style.color = 'var(--accent)';
+  
+  try {
+    const tenantId = document.getElementById('edit-tenant-id').value;
+    const data = {
+      company_name: document.getElementById('edit-tenant-company-name').value.trim(),
+      plan: document.getElementById('edit-tenant-plan').value,
+      status: document.getElementById('edit-tenant-status').value,
+      azure_config: {
+        org_url: document.getElementById('edit-tenant-org-url').value.trim(),
+        project: document.getElementById('edit-tenant-project').value.trim(),
+        repository: document.getElementById('edit-tenant-repository').value.trim()
+      }
+    };
+    
+    const res = await fetch(`/api/tenants/${tenantId}`, {
+      method: 'PUT',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(data)
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      status.style.color = 'var(--green)';
+      status.textContent = '✓ Cambios guardados exitosamente';
+      
+      setTimeout(() => {
+        closeEditTenantModal();
+        loadTenants();
+      }, 1500);
+    } else {
+      throw new Error(res.error || 'Error guardando cambios');
+    }
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = `❌ ${e.message}`;
+  }
+}
+
+async function regenerateApiKey() {
+  if (!confirm('¿Estás seguro de regenerar la API Key? La anterior dejará de funcionar.')) return;
+  
+  try {
+    const tenantId = document.getElementById('edit-tenant-id').value;
+    const res = await fetch(`/api/tenants/${tenantId}/regenerate-key`, {
+      method: 'POST',
+      headers: apiHeaders()
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      document.getElementById('edit-tenant-api-key').value = res.api_key;
+      const status = document.getElementById('edit-tenant-status-msg');
+      status.style.color = 'var(--green)';
+      status.textContent = '✓ API Key regenerada exitosamente';
+    } else {
+      throw new Error(res.error || 'Error regenerando API Key');
+    }
+  } catch(e) {
+    const status = document.getElementById('edit-tenant-status-msg');
+    status.style.color = 'var(--red)';
+    status.textContent = `❌ ${e.message}`;
+  }
+}
+
+async function deleteTenant(tenantId) {
+  const tenant = allTenants.find(t => t.id === tenantId);
+  if (!tenant) return;
+  
+  if (!confirm(`¿Estás seguro de eliminar el cliente "${tenant.company_name}"?`)) return;
+  
+  try {
+    const res = await fetch(`/api/tenants/${tenantId}`, {
+      method: 'DELETE',
+      headers: apiHeaders()
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      loadTenants(); // Recargar lista
+    } else {
+      throw new Error(res.error || 'Error eliminando cliente');
+    }
+  } catch(e) {
+    alert(`❌ Error: ${e.message}`);
+  }
+}
+
 Promise.all([
   loadActivos(),
   new Promise(r => setTimeout(() => loadStats().then(r).catch(r), 500)),
