@@ -142,6 +142,19 @@ def _ensure_headers(sheet):
 
 
 def append_pr(pr_data, auto_approved=False, approval_date=""):
+    """Agrega un PR a Google Sheets."""
+    # Verificar si Sheets está habilitado
+    if not is_sheets_enabled():
+        logger.debug("Google Sheets no habilitado, omitiendo append_pr")
+        return
+    
+    sheet_id = get_sheet_id()
+    sheet_name = get_sheet_name()
+    
+    if not sheet_id:
+        logger.warning("No hay sheet_id configurado")
+        return
+    
     def _run():
         try:
             def _do():
@@ -153,7 +166,7 @@ def append_pr(pr_data, auto_approved=False, approval_date=""):
                     return
                 row = pr_to_row(pr_data, auto_approved=auto_approved, approval_date=approval_date)
                 sheet.values().append(
-                    spreadsheetId=SHEET_ID, range="Hoja 1!A1",
+                    spreadsheetId=sheet_id, range=f"{sheet_name}!A1",
                     valueInputOption="RAW", insertDataOption="INSERT_ROWS",
                     body={"values": [row]},
                 ).execute()
