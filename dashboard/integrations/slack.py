@@ -146,6 +146,17 @@ def wait_for_pr_thread(pr_id, interval=5, max_wait=30):
 
 
 def notify_pr_slack(pr_id, action, detail=None):
+    """Notifica un evento de PR en Slack."""
+    # Verificar si Slack está habilitado
+    if not is_slack_enabled():
+        logger.debug(f"Slack no habilitado, omitiendo notificación para PR {pr_id}")
+        return
+    
+    channel = get_slack_channel()
+    if not channel:
+        logger.warning(f"No hay canal de Slack configurado para PR {pr_id}")
+        return
+    
     # Guard: evitar duplicados para la misma acción en la misma sesión
     key = (int(pr_id), action)
     with _notified_lock:
@@ -178,7 +189,7 @@ def notify_pr_slack(pr_id, action, detail=None):
             if not thread_ts:
                 logger.warning("[slack] No se pudo notificar PR %s (acción: %s): hilo no encontrado", pr_id, action)
                 return
-            slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "text": text, "thread_ts": thread_ts})
+            slack_api("chat.postMessage", {"channel": channel, "text": text, "thread_ts": thread_ts})
             logger.info("[slack] Notificación enviada PR %s acción %s", pr_id, action)
         except Exception as e:
             logger.error("[slack] Error notificando PR %s (acción: %s): %s", pr_id, action, e)
