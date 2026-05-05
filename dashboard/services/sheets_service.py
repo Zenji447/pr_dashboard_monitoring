@@ -105,7 +105,17 @@ def pr_to_row(pr, deploy_status="", deploy_date="", approval_date="", auto_appro
 
 
 def _find_row(sheet, pr_id):
-    result = sheet.values().get(spreadsheetId=SHEET_ID, range="Hoja 1!A:A").execute()
+    """Busca la fila de un PR en la hoja."""
+    if not is_sheets_enabled():
+        return None
+    
+    sheet_id = get_sheet_id()
+    sheet_name = get_sheet_name()
+    
+    if not sheet_id:
+        return None
+    
+    result = sheet.values().get(spreadsheetId=sheet_id, range=f"{sheet_name}!A:A").execute()
     for i, row in enumerate(result.get("values", []), start=1):
         if row and str(row[0]) == str(pr_id):
             return i
@@ -113,10 +123,20 @@ def _find_row(sheet, pr_id):
 
 
 def _ensure_headers(sheet):
-    result = sheet.values().get(spreadsheetId=SHEET_ID, range="Hoja 1!A1:A1").execute()
+    """Asegura que la hoja tenga los headers correctos."""
+    if not is_sheets_enabled():
+        return
+    
+    sheet_id = get_sheet_id()
+    sheet_name = get_sheet_name()
+    
+    if not sheet_id:
+        return
+    
+    result = sheet.values().get(spreadsheetId=sheet_id, range=f"{sheet_name}!A1:A1").execute()
     if not result.get("values"):
         sheet.values().update(
-            spreadsheetId=SHEET_ID, range="Hoja 1!A1",
+            spreadsheetId=sheet_id, range=f"{sheet_name}!A1",
             valueInputOption="RAW", body={"values": [SHEET_HEADERS]},
         ).execute()
 
