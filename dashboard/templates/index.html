@@ -2864,6 +2864,9 @@ async function toggleBranchAutoApprove(branchName, add) {
     const data = await response.json();
     if (!data.ok) throw new Error(data.error);
     
+    // Recargar el sidebar de auto-aprobación para reflejar el cambio
+    await loadAutoApproveConfig();
+    
     loadManagedBranches();
   } catch(e) {
     alert(`Error: ${e.message}`);
