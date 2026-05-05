@@ -34,8 +34,8 @@ def _get_releases_cached(token):
 def get_deploy_status(pr_id, merge_commit=None, closed_date=None, target_branch=None):
     try:
         token = get_token()
-        org_name = ORG_URL.rstrip("/").split("/")[-1]
-        vsrm = f"https://vsrm.dev.azure.com/{org_name}/{PROJECT}"
+        org_name = get_org_url().rstrip("/").split("/")[-1]
+        vsrm = f"https://vsrm.dev.azure.com/{org_name}/{get_project()}"
         releases = _get_releases_cached(token)
         pr_branch = f"refs/pull/{pr_id}/merge"
 
