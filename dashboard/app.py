@@ -1307,7 +1307,7 @@ def update_tenant(tenant_id):
 
 
 @app.route("/api/tenants/<int:tenant_id>", methods=["DELETE"])
-@require_api_key
+@require_tenant_api_key
 def delete_tenant(tenant_id):
     """Elimina un tenant (soft delete)."""
     try:
