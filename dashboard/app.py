@@ -1051,6 +1051,302 @@ def export_sheets():
         return jsonify({"ok": False, "error": "Error exportando a Sheets"}), 500
 
 
+# ── Tenant Management API ────────────────────────────────────────────────────
+
+@app.route("/api/tenants", methods=["GET"])
+@require_api_key
+def list_tenants():
+    """Lista todos los tenants."""
+    try:
+        import sqlite3
+        from pathlib import Path
+        
+        db_path = Path(__file__).parent.parent / "memoria" / "state.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        rows = cursor.execute("""
+            SELECT t.*, 
+                   ac.org_url, ac.project, ac.repository,
+                   COUNT(CASE WHEN ti.enabled = 1 THEN 1 END) as active_integrations
+            FROM tenants t
+            LEFT JOIN tenant_azure_config ac ON t.id = ac.tenant_id
+            LEFT JOIN tenant_integrations ti ON t.id = ti.tenant_id
+            WHERE t.status = 'active'
+            GROUP BY t.id
+            ORDER BY t.created_at DESC
+        """).fetchall()
+        
+        conn.close()
+        
+        tenants = []
+        for row in rows:
+            tenants.append({
+                "id": row["id"],
+                "subdomain": row["subdomain"],
+                "company_name": row["company_name"],
+                "api_key": row["api_key"],
+                "plan": row["plan"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+                "azure_config": {
+                    "org_url": row["org_url"],
+                    "project": row["project"],
+                    "repository": row["repository"]
+                } if row["org_url"] else None,
+                "active_integrations": row["active_integrations"] or 0
+            })
+        
+        return jsonify({"ok": True, "tenants": tenants})
+    except Exception as e:
+        logger.error("[tenants] GET %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error cargando tenants"}), 500
+
+
+@app.route("/api/tenants", methods=["POST"])
+@require_api_key
+def create_tenant():
+    """Crea un nuevo tenant."""
+    try:
+        import sqlite3
+        import secrets
+        from pathlib import Path
+        
+        data = request.get_json(silent=True) or {}
+        
+        # Validar datos requeridos
+        required_fields = ["subdomain", "company_name", "plan"]
+        for field in required_fields:
+            if not data.get(field, "").strip():
+                return jsonify({"ok": False, "error": f"Campo {field} es requerido"}), 400
+        
+        subdomain = data["subdomain"].strip().lower()
+        company_name = data["company_name"].strip()
+        plan = data["plan"].strip()
+        
+        # Validar plan
+        if plan not in ["basic", "pro", "enterprise"]:
+            return jsonify({"ok": False, "error": "Plan debe ser basic, pro o enterprise"}), 400
+        
+        # Generar API Key única
+        api_key = f"prm_{secrets.token_urlsafe(32)}"
+        
+        db_path = Path(__file__).parent.parent / "memoria" / "state.db"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        
+        try:
+            # Crear tenant
+            cursor.execute("""
+                INSERT INTO tenants (subdomain, company_name, api_key, plan, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'active', datetime('now'), datetime('now'))
+            """, (subdomain, company_name, api_key, plan))
+            
+            tenant_id = cursor.lastrowid
+            
+            # Configurar Azure DevOps si se proporciona
+            azure_config = data.get("azure_config", {})
+            if azure_config.get("org_url") and azure_config.get("project"):
+                cursor.execute("""
+                    INSERT INTO tenant_azure_config (tenant_id, org_url, project, repository, pat_token)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    tenant_id,
+                    azure_config["org_url"],
+                    azure_config["project"],
+                    azure_config.get("repository", azure_config["project"]),
+                    azure_config.get("pat_token", "")
+                ))
+            
+            # Configurar integraciones si se proporcionan
+            integrations = data.get("integrations", {})
+            for integration_type, config in integrations.items():
+                if integration_type in ["slack", "sheets"] and config.get("enabled"):
+                    cursor.execute("""
+                        INSERT INTO tenant_integrations (tenant_id, integration_type, enabled, config)
+                        VALUES (?, ?, ?, ?)
+                    """, (tenant_id, integration_type, 1, json.dumps(config.get("config", {}))))
+            
+            # Configuración básica del tenant
+            cursor.execute("""
+                INSERT INTO tenant_settings (tenant_id, language, timezone, blocked_authors, blocked_branches)
+                VALUES (?, ?, ?, ?, ?)
+            """, (tenant_id, "es", "America/Mexico_City", "[]", "[]"))
+            
+            conn.commit()
+            
+            return jsonify({
+                "ok": True,
+                "tenant": {
+                    "id": tenant_id,
+                    "subdomain": subdomain,
+                    "company_name": company_name,
+                    "api_key": api_key,
+                    "plan": plan,
+                    "status": "active"
+                }
+            })
+            
+        except sqlite3.IntegrityError as e:
+            conn.rollback()
+            if "subdomain" in str(e):
+                return jsonify({"ok": False, "error": "El subdominio ya existe"}), 409
+            elif "api_key" in str(e):
+                return jsonify({"ok": False, "error": "Error generando API Key"}), 500
+            else:
+                return jsonify({"ok": False, "error": "Error de integridad de datos"}), 409
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        logger.error("[tenants] POST %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error creando tenant"}), 500
+
+
+@app.route("/api/tenants/<int:tenant_id>", methods=["PUT"])
+@require_api_key
+def update_tenant(tenant_id):
+    """Actualiza un tenant."""
+    try:
+        import sqlite3
+        from pathlib import Path
+        
+        data = request.get_json(silent=True) or {}
+        
+        db_path = Path(__file__).parent.parent / "memoria" / "state.db"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        
+        try:
+            # Actualizar tenant básico
+            if any(key in data for key in ["company_name", "plan", "status"]):
+                updates = []
+                params = []
+                
+                if "company_name" in data:
+                    updates.append("company_name = ?")
+                    params.append(data["company_name"].strip())
+                
+                if "plan" in data and data["plan"] in ["basic", "pro", "enterprise"]:
+                    updates.append("plan = ?")
+                    params.append(data["plan"])
+                
+                if "status" in data and data["status"] in ["active", "inactive"]:
+                    updates.append("status = ?")
+                    params.append(data["status"])
+                
+                if updates:
+                    updates.append("updated_at = datetime('now')")
+                    params.append(tenant_id)
+                    
+                    cursor.execute(f"""
+                        UPDATE tenants SET {', '.join(updates)}
+                        WHERE id = ?
+                    """, params)
+            
+            # Actualizar configuración de Azure DevOps
+            azure_config = data.get("azure_config")
+            if azure_config:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO tenant_azure_config 
+                    (tenant_id, org_url, project, repository, pat_token)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    tenant_id,
+                    azure_config.get("org_url", ""),
+                    azure_config.get("project", ""),
+                    azure_config.get("repository", ""),
+                    azure_config.get("pat_token", "")
+                ))
+            
+            # Actualizar integraciones
+            integrations = data.get("integrations", {})
+            for integration_type, config in integrations.items():
+                if integration_type in ["slack", "sheets"]:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO tenant_integrations 
+                        (tenant_id, integration_type, enabled, config)
+                        VALUES (?, ?, ?, ?)
+                    """, (
+                        tenant_id,
+                        integration_type,
+                        1 if config.get("enabled") else 0,
+                        json.dumps(config.get("config", {}))
+                    ))
+            
+            conn.commit()
+            return jsonify({"ok": True})
+            
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        logger.error("[tenants] PUT %d: %s", tenant_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error actualizando tenant"}), 500
+
+
+@app.route("/api/tenants/<int:tenant_id>", methods=["DELETE"])
+@require_api_key
+def delete_tenant(tenant_id):
+    """Elimina un tenant (soft delete)."""
+    try:
+        import sqlite3
+        from pathlib import Path
+        
+        db_path = Path(__file__).parent.parent / "memoria" / "state.db"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE tenants SET status = 'inactive', updated_at = datetime('now')
+            WHERE id = ?
+        """, (tenant_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"ok": True})
+        
+    except Exception as e:
+        logger.error("[tenants] DELETE %d: %s", tenant_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error eliminando tenant"}), 500
+
+
+@app.route("/api/tenants/<int:tenant_id>/regenerate-key", methods=["POST"])
+@require_api_key
+def regenerate_tenant_key(tenant_id):
+    """Regenera la API Key de un tenant."""
+    try:
+        import sqlite3
+        import secrets
+        from pathlib import Path
+        
+        # Generar nueva API Key
+        new_api_key = f"prm_{secrets.token_urlsafe(32)}"
+        
+        db_path = Path(__file__).parent.parent / "memoria" / "state.db"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE tenants SET api_key = ?, updated_at = datetime('now')
+            WHERE id = ?
+        """, (new_api_key, tenant_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"ok": True, "api_key": new_api_key})
+        
+    except Exception as e:
+        logger.error("[tenants] regenerate-key %d: %s", tenant_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error regenerando API Key"}), 500
+
+
 # ── Git fetch loop ────────────────────────────────────────────────────────────
 
 LOCAL_REPO = Path("/home/zen6/cc/SalesForce")
