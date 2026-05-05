@@ -1262,6 +1262,123 @@
   </div>
 </div>
 
+<!-- Create Tenant Modal -->
+<div class="modal-overlay" id="create-tenant-modal" onclick="if(event.target===this)closeCreateTenantModal()">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-title">
+      <span>👥</span>
+      <span data-i18n="createTenant">Nuevo Cliente</span>
+    </div>
+    
+    <div class="modal-field">
+      <label class="modal-label">Nombre de la Empresa *</label>
+      <input class="modal-input" id="tenant-company-name" type="text" placeholder="Ej: Acme Corporation">
+    </div>
+    
+    <div class="modal-field">
+      <label class="modal-label">Subdominio *</label>
+      <input class="modal-input" id="tenant-subdomain" type="text" placeholder="Ej: acme-corp">
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:4px">Solo letras, números y guiones. Será usado en URLs.</div>
+    </div>
+    
+    <div class="modal-field">
+      <label class="modal-label">Plan *</label>
+      <select class="modal-input" id="tenant-plan">
+        <option value="basic">Basic</option>
+        <option value="pro">Pro</option>
+        <option value="enterprise" selected>Enterprise</option>
+      </select>
+    </div>
+    
+    <div class="modal-field">
+      <label class="modal-label">Configuración Azure DevOps</label>
+      <input class="modal-input" id="tenant-org-url" type="text" placeholder="https://dev.azure.com/tu-organizacion" style="margin-bottom:8px">
+      <input class="modal-input" id="tenant-project" type="text" placeholder="Nombre del Proyecto" style="margin-bottom:8px">
+      <input class="modal-input" id="tenant-repository" type="text" placeholder="Nombre del Repositorio">
+    </div>
+    
+    <div class="modal-field">
+      <label class="modal-label">Integraciones</label>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem">
+          <input type="checkbox" id="tenant-slack-enabled">
+          <span>Slack</span>
+        </label>
+        <input class="modal-input" id="tenant-slack-channel" type="text" placeholder="ID del Canal de Slack" style="margin-left:24px">
+        
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem">
+          <input type="checkbox" id="tenant-sheets-enabled">
+          <span>Google Sheets</span>
+        </label>
+        <input class="modal-input" id="tenant-sheets-id" type="text" placeholder="ID de la Hoja de Cálculo" style="margin-left:24px">
+      </div>
+    </div>
+    
+    <div class="modal-status" id="create-tenant-status"></div>
+    
+    <div class="modal-actions">
+      <button onclick="closeCreateTenantModal()" style="background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border2)">Cancelar</button>
+      <button onclick="submitCreateTenant()" class="btn-sheets">Crear Cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Tenant Modal -->
+<div class="modal-overlay" id="edit-tenant-modal" onclick="if(event.target===this)closeEditTenantModal()">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-title">
+      <span>✏️</span>
+      <span>Editar Cliente</span>
+    </div>
+    
+    <input type="hidden" id="edit-tenant-id">
+    
+    <div class="modal-field">
+      <label class="modal-label">Nombre de la Empresa *</label>
+      <input class="modal-input" id="edit-tenant-company-name" type="text">
+    </div>
+    
+    <div class="modal-field">
+      <label class="modal-label">Plan *</label>
+      <select class="modal-input" id="edit-tenant-plan">
+        <option value="basic">Basic</option>
+        <option value="pro">Pro</option>
+        <option value="enterprise">Enterprise</option>
+      </select>
+    </div>
+    
+    <div class="modal-field">
+      <label class="modal-label">Estado</label>
+      <select class="modal-input" id="edit-tenant-status">
+        <option value="active">Activo</option>
+        <option value="inactive">Inactivo</option>
+      </select>
+    </div>
+    
+    <div class="modal-field">
+      <label class="modal-label">Configuración Azure DevOps</label>
+      <input class="modal-input" id="edit-tenant-org-url" type="text" placeholder="https://dev.azure.com/tu-organizacion" style="margin-bottom:8px">
+      <input class="modal-input" id="edit-tenant-project" type="text" placeholder="Nombre del Proyecto" style="margin-bottom:8px">
+      <input class="modal-input" id="edit-tenant-repository" type="text" placeholder="Nombre del Repositorio">
+    </div>
+    
+    <div class="modal-field">
+      <label class="modal-label">API Key</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="modal-input" id="edit-tenant-api-key" type="text" readonly style="flex:1;background:rgba(255,255,255,.02)">
+        <button onclick="regenerateApiKey()" class="btn-primary" style="padding:8px 12px;font-size:0.8rem">🔄 Regenerar</button>
+      </div>
+    </div>
+    
+    <div class="modal-status" id="edit-tenant-status-msg"></div>
+    
+    <div class="modal-actions">
+      <button onclick="closeEditTenantModal()" style="background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border2)">Cancelar</button>
+      <button onclick="submitEditTenant()" class="btn-sheets">Guardar Cambios</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const API_KEY = localStorage.getItem("pr_dashboard_api_key") || "";
 
