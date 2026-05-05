@@ -1222,7 +1222,7 @@ def create_tenant():
 
 
 @app.route("/api/tenants/<int:tenant_id>", methods=["PUT"])
-@require_api_key
+@require_tenant_api_key
 def update_tenant(tenant_id):
     """Actualiza un tenant."""
     try:
