@@ -22,8 +22,8 @@ def _get_releases_cached(token):
     with _releases_cache_lock:
         if time.time() - _releases_cache["ts"] < _RELEASES_TTL and _releases_cache["data"] is not None:
             return _releases_cache["data"]
-    org_name = ORG_URL.rstrip("/").split("/")[-1]
-    vsrm = f"https://vsrm.dev.azure.com/{org_name}/{PROJECT}"
+    org_name = get_org_url().rstrip("/").split("/")[-1]
+    vsrm = f"https://vsrm.dev.azure.com/{org_name}/{get_project()}"
     releases = api_azure(f"{vsrm}/_apis/release/releases?api-version=7.1&$top=50", token).get("value", [])
     with _releases_cache_lock:
         _releases_cache["data"] = releases
