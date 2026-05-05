@@ -955,15 +955,15 @@ def create_branch():
             return jsonify({"ok": False, "error": "Nombre de rama requerido"}), 400
         from integrations.azure import api_azure
         token = get_token()
-        url = f"{ORG_URL}/{PROJECT}/_apis/git/repositories/{REPOSITORY}/refs?filter=heads/{base_branch}&api-version=7.1"
+        url = f"{get_org_url()}/{get_project()}/_apis/git/repositories/{get_repository()}/refs?filter=heads/{base_branch}&api-version=7.1"
         ref_data = api_azure(url, token)
         object_id = ref_data["value"][0]["objectId"]
         result = subprocess.run([
             "az", "repos", "ref", "create",
             "--name", f"refs/heads/{branch_name}",
             "--object-id", object_id,
-            "--repository", REPOSITORY,
-            "--org", ORG_URL, "--project", PROJECT, "-o", "json"
+            "--repository", get_repository(),
+            "--org", get_org_url(), "--project", get_project(), "-o", "json"
         ], capture_output=True, text=True)
         if result.returncode != 0:
             return jsonify({"ok": False, "error": result.stderr or result.stdout}), 500
