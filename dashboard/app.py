@@ -1334,7 +1334,7 @@ def delete_tenant(tenant_id):
 
 
 @app.route("/api/tenants/<int:tenant_id>/regenerate-key", methods=["POST"])
-@require_api_key
+@require_tenant_api_key
 def regenerate_tenant_key(tenant_id):
     """Regenera la API Key de un tenant."""
     try:
