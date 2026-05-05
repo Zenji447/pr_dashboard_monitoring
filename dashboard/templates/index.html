@@ -1599,6 +1599,7 @@ function switchTab(tab) {
   document.getElementById('filters').style.display = ['hoy','ayer','rango'].includes(tab) ? 'flex' : 'none';
   if (tab === 'rules') loadAllRules();
   else if (tab === 'branches') loadManagedBranches();
+  else if (tab === 'admin') loadTenants();
   else if (tab !== 'rango' && tab !== 'historial') reload();
 }
 
