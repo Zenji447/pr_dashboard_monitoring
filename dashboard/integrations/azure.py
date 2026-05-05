@@ -114,7 +114,7 @@ def api_azure(url, token):
 def list_active_prs():
     return json.loads(subprocess.check_output([
         "az", "repos", "pr", "list", "--status", "active",
-        "--repository", REPOSITORY, "--org", ORG_URL, "--project", PROJECT, "-o", "json",
+        "--repository", get_repository(), "--org", get_org_url(), "--project", get_project(), "-o", "json",
     ], text=True))
 
 
