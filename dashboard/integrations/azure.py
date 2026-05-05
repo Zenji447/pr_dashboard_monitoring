@@ -21,11 +21,14 @@ def _get_azure_config():
     from integrations.tenant_context import get_current_tenant
     
     tenant = get_current_tenant()
-    if tenant and tenant.azure_config:
-        return tenant.azure_config
+    if tenant:
+        try:
+            return tenant.azure_config
+        except Exception as e:
+            logger.warning(f"Error obteniendo config de Azure del tenant: {e}")
     
     # Fallback a variables de entorno (para compatibilidad)
-    org = os.getenv("AZURE_ORG", "OrgClaroColombia")
+    org = os.getenv("AZURE_ORG", "salesforce-mx")
     return {
         'org_url': f"https://dev.azure.com/{org}",
         'project': os.getenv("AZURE_PROJECT", "SalesForce"),
@@ -34,20 +37,7 @@ def _get_azure_config():
     }
 
 
-# Variables globales que ahora son dinámicas
-@property
-def ORG_URL():
-    return _get_azure_config()['org_url']
-
-@property  
-def PROJECT():
-    return _get_azure_config()['project']
-
-@property
-def REPOSITORY():
-    return _get_azure_config()['repository']
-
-# Para compatibilidad con código existente, creamos funciones
+# Funciones para obtener configuración dinámica
 def get_org_url():
     return _get_azure_config()['org_url']
 
@@ -56,6 +46,12 @@ def get_project():
 
 def get_repository():
     return _get_azure_config()['repository']
+
+# Para compatibilidad con código existente que usa las constantes
+# Estas ahora son funciones que se llaman dinámicamente
+ORG_URL = get_org_url()
+PROJECT = get_project()
+REPOSITORY = get_repository()
 
 # ── Token cache ───────────────────────────────────────────────────────────────
 _token_cache = {"value": None, "expires_at": 0.0}
