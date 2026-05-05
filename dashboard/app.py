@@ -445,7 +445,101 @@ def set_blocked_branches_route():
 
 @app.route("/api/branches")
 def api_branches():
-    return jsonify({"ok": True, "branches": ["develop", "develop-pr", "releaseproyecto/r6"]})
+    """Obtiene todas las ramas gestionadas en el sistema."""
+    try:
+        from integrations.state import load_managed_branches
+        branches = load_managed_branches()
+        return jsonify({"ok": True, "branches": branches})
+    except Exception as e:
+        logger.error("[api/branches] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error cargando ramas"}), 500
+
+
+@app.route("/api/branches/managed", methods=["GET"])
+def get_managed_branches():
+    """Obtiene información detallada de todas las ramas gestionadas."""
+    try:
+        from integrations.state import load_managed_branches, get_branch_info
+        branches = load_managed_branches()
+        
+        branches_info = []
+        for branch in branches:
+            info = get_branch_info(branch)
+            if info.get("ok"):
+                branches_info.append(info["branch"])
+        
+        return jsonify({"ok": True, "branches": branches_info})
+    except Exception as e:
+        logger.error("[api/branches/managed] %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error cargando información de ramas"}), 500
+
+
+@app.route("/api/branches/managed", methods=["POST"])
+@require_api_key
+def add_managed_branch():
+    """Agrega una nueva rama al sistema."""
+    try:
+        from integrations.state import add_managed_branch as add_branch
+        
+        data = request.get_json(silent=True) or {}
+        branch_name = data.get("name", "").strip()
+        
+        if not branch_name:
+            return jsonify({"ok": False, "error": "Nombre de rama requerido"}), 400
+        
+        # Validar nombre de rama
+        if len(branch_name) > 200:
+            return jsonify({"ok": False, "error": "Nombre de rama demasiado largo"}), 400
+        
+        # Configuración opcional
+        branch_config = data.get("config")
+        
+        result = add_branch(branch_name, branch_config)
+        
+        if not result.get("ok"):
+            return jsonify(result), 400
+        
+        invalidate_prs_cache()
+        return jsonify(result), 201
+    except Exception as e:
+        logger.error("[api/branches/managed] POST %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error agregando rama"}), 500
+
+
+@app.route("/api/branches/managed/<path:branch_name>", methods=["DELETE"])
+@require_api_key
+def remove_managed_branch(branch_name):
+    """Elimina una rama del sistema."""
+    try:
+        from integrations.state import remove_managed_branch as remove_branch
+        
+        result = remove_branch(branch_name)
+        
+        if not result.get("ok"):
+            return jsonify(result), 404
+        
+        invalidate_prs_cache()
+        return jsonify(result)
+    except Exception as e:
+        logger.error("[api/branches/managed] DELETE %s: %s", branch_name, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error eliminando rama"}), 500
+
+
+@app.route("/api/branches/managed/<path:branch_name>", methods=["GET"])
+def get_branch_info_api(branch_name):
+    """Obtiene información detallada de una rama."""
+    try:
+        from integrations.state import get_branch_info
+        
+        result = get_branch_info(branch_name)
+        
+        if not result.get("ok"):
+            return jsonify(result), 404
+        
+        return jsonify(result)
+    except Exception as e:
+        logger.error("[api/branches/managed] GET %s: %s", branch_name, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error obteniendo información de rama"}), 500
 
 
 @app.route("/api/config/pr-validation-rules", methods=["GET"])
