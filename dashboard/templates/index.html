@@ -2657,6 +2657,238 @@ applyI18n();
   };
 })();
 
+// ── Branch Management ────────────────────────────────────────────────────────
+
+async function loadManagedBranches() {
+  setLoading('Cargando ramas...');
+  try {
+    const response = await fetch('/api/branches/managed');
+    const data = await response.json();
+    
+    if (!data.ok) throw new Error(data.error);
+    
+    renderBranchesTable(data.branches);
+    renderBranchesSummary(data.branches);
+    setStatus(`${data.branches.length} rama(s) gestionada(s)`);
+  } catch(e) {
+    setError(e.message);
+  }
+}
+
+function renderBranchesSummary(branches) {
+  const total = branches.length;
+  const withRules = branches.filter(b => b.has_rules).length;
+  const inAutoApprove = branches.filter(b => b.in_auto_approve).length;
+  const enabled = branches.filter(b => b.rules?.enabled).length;
+  
+  const summary = document.getElementById('branches-summary');
+  summary.innerHTML = `
+    <div class="kpi-card" style="--kpi-color:#3b82f6">
+      <div class="kpi-label">Total de Ramas</div>
+      <div class="kpi-value">${total}</div>
+      <div class="kpi-sub">gestionadas</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#22c55e">
+      <div class="kpi-label">Con Reglas</div>
+      <div class="kpi-value">${withRules}</div>
+      <div class="kpi-sub">${Math.round(withRules/total*100)}% del total</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#a855f7">
+      <div class="kpi-label">Auto-Aprobación</div>
+      <div class="kpi-value">${inAutoApprove}</div>
+      <div class="kpi-sub">${Math.round(inAutoApprove/total*100)}% del total</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#06b6d4">
+      <div class="kpi-label">Habilitadas</div>
+      <div class="kpi-value">${enabled}</div>
+      <div class="kpi-sub">${Math.round(enabled/total*100)}% activas</div>
+    </div>
+  `;
+}
+
+function renderBranchesTable(branches) {
+  const tbody = document.getElementById('branches-table-body');
+  
+  if (!branches.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#64748b;text-align:center;padding:40px">No hay ramas gestionadas</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = branches.map(branch => {
+    const hasRules = branch.has_rules ? '✅' : '❌';
+    const inAutoApprove = branch.in_auto_approve ? '✅' : '❌';
+    const enabled = branch.rules?.enabled ? 
+      '<span class="badge badge-aprobable">Activa</span>' : 
+      '<span class="badge" style="background:rgba(100,116,139,.1);color:#94a3b8;border:1px solid rgba(100,116,139,.2)">Inactiva</span>';
+    
+    const autoApproveBtn = branch.in_auto_approve ?
+      `<button class="btn-rule-action" onclick="toggleBranchAutoApprove('${esc(branch.name)}', false)" title="Quitar de auto-aprobación">🔕 Quitar Auto-Apr.</button>` :
+      `<button class="btn-rule-action" onclick="toggleBranchAutoApprove('${esc(branch.name)}', true)" title="Agregar a auto-aprobación">🔔 Agregar Auto-Apr.</button>`;
+    
+    return `<tr>
+      <td style="font-weight:600;color:#93c5fd;font-family:monospace;font-size:0.85rem">${esc(branch.name)}</td>
+      <td style="text-align:center;font-size:1.2rem">${hasRules}</td>
+      <td style="text-align:center;font-size:1.2rem">${inAutoApprove}</td>
+      <td>${enabled}</td>
+      <td style="white-space:nowrap">
+        <button class="btn-rule-action" onclick="configureBranchRules('${esc(branch.name)}')" title="Configurar reglas">⚙️ Reglas</button>
+        ${autoApproveBtn}
+        <button class="btn-rule-action danger" onclick="deleteBranch('${esc(branch.name)}')" title="Eliminar rama">🗑️ Eliminar</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openAddBranchModal() {
+  document.getElementById('add-branch-modal-title').textContent = lang === 'es' ? 'Agregar Nueva Rama' : 'Add New Branch';
+  document.getElementById('add-branch-name').value = '';
+  document.getElementById('add-branch-enabled').checked = true;
+  document.getElementById('add-branch-release-pattern').value = '';
+  document.getElementById('add-branch-release-message').value = '';
+  document.getElementById('add-branch-sprints').value = '';
+  document.getElementById('add-branch-sprint-message').value = '';
+  document.getElementById('add-branch-warning-message').value = '';
+  document.getElementById('add-branch-auto-approve').checked = false;
+  document.getElementById('modal-add-branch-status').textContent = '';
+  document.getElementById('add-branch-modal').classList.add('open');
+}
+
+function closeAddBranchModal() {
+  document.getElementById('add-branch-modal').classList.remove('open');
+}
+
+async function saveNewBranch() {
+  const name = document.getElementById('add-branch-name').value.trim();
+  const status = document.getElementById('modal-add-branch-status');
+  
+  if (!name) {
+    status.textContent = lang === 'es' ? 'El nombre de la rama es requerido' : 'Branch name is required';
+    status.style.color = 'var(--red)';
+    return;
+  }
+  
+  status.textContent = lang === 'es' ? 'Guardando...' : 'Saving...';
+  status.style.color = 'var(--text)';
+  
+  try {
+    // Construir configuración
+    const config = {
+      enabled: document.getElementById('add-branch-enabled').checked
+    };
+    
+    const releasePattern = document.getElementById('add-branch-release-pattern').value.trim();
+    if (releasePattern) {
+      config.release_pattern = releasePattern;
+      config.release_message = document.getElementById('add-branch-release-message').value.trim() || `PR sin release válido`;
+    }
+    
+    const sprints = document.getElementById('add-branch-sprints').value.trim();
+    if (sprints) {
+      config.sprints = sprints.split(',').map(s => s.trim()).filter(s => s);
+      config.sprint_message = document.getElementById('add-branch-sprint-message').value.trim() || `PR sin sprint activo`;
+    }
+    
+    const warningMessage = document.getElementById('add-branch-warning-message').value.trim();
+    if (warningMessage) {
+      config.warning_message = warningMessage;
+    }
+    
+    // Crear la rama
+    const response = await fetch('/api/branches/managed', {
+      method: 'POST',
+      headers: apiHeaders({'Content-Type': 'application/json'}),
+      body: JSON.stringify({ name, config })
+    });
+    
+    const data = await response.json();
+    
+    if (!data.ok) throw new Error(data.error);
+    
+    // Si se marcó auto-aprobación, agregarla
+    if (document.getElementById('add-branch-auto-approve').checked) {
+      const autoConfig = await fetch('/api/config/auto-approve').then(r => r.json());
+      const branches = autoConfig.branches || [];
+      if (!branches.includes(name)) {
+        branches.push(name);
+        await fetch('/api/config/auto-approve', {
+          method: 'POST',
+          headers: apiHeaders({'Content-Type': 'application/json'}),
+          body: JSON.stringify({ enabled: autoConfig.enabled, branches })
+        });
+      }
+    }
+    
+    status.textContent = lang === 'es' ? '✅ Rama creada exitosamente' : '✅ Branch created successfully';
+    status.style.color = 'var(--green)';
+    
+    setTimeout(() => {
+      closeAddBranchModal();
+      loadManagedBranches();
+    }, 1500);
+  } catch(e) {
+    status.textContent = `❌ ${e.message}`;
+    status.style.color = 'var(--red)';
+  }
+}
+
+async function toggleBranchAutoApprove(branchName, add) {
+  try {
+    const config = await fetch('/api/config/auto-approve').then(r => r.json());
+    const branches = config.branches || [];
+    
+    if (add && !branches.includes(branchName)) {
+      branches.push(branchName);
+    } else if (!add) {
+      const index = branches.indexOf(branchName);
+      if (index > -1) branches.splice(index, 1);
+    }
+    
+    const response = await fetch('/api/config/auto-approve', {
+      method: 'POST',
+      headers: apiHeaders({'Content-Type': 'application/json'}),
+      body: JSON.stringify({ enabled: config.enabled, branches })
+    });
+    
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error);
+    
+    loadManagedBranches();
+  } catch(e) {
+    alert(`Error: ${e.message}`);
+  }
+}
+
+async function configureBranchRules(branchName) {
+  // Abrir el modal de reglas de validación con la rama seleccionada
+  openValidationRulesModal();
+  // Cambiar al tab de branch rules
+  switchValidationRulesTab('branch');
+  // TODO: Scroll to the specific branch
+}
+
+async function deleteBranch(branchName) {
+  const confirmMsg = lang === 'es' ? 
+    `¿Estás seguro de eliminar la rama "${branchName}"?\n\nEsto eliminará:\n- La rama de la lista gestionada\n- Sus reglas de validación\n- Su configuración de auto-aprobación` :
+    `Are you sure you want to delete branch "${branchName}"?\n\nThis will remove:\n- The branch from managed list\n- Its validation rules\n- Its auto-approval configuration`;
+  
+  if (!confirm(confirmMsg)) return;
+  
+  try {
+    const response = await fetch(`/api/branches/managed/${encodeURIComponent(branchName)}`, {
+      method: 'DELETE',
+      headers: apiHeaders()
+    });
+    
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error);
+    
+    alert(lang === 'es' ? '✅ Rama eliminada exitosamente' : '✅ Branch deleted successfully');
+    loadManagedBranches();
+  } catch(e) {
+    alert(`❌ Error: ${e.message}`);
+  }
+}
+
 Promise.all([
   loadActivos(),
   new Promise(r => setTimeout(() => loadStats().then(r).catch(r), 500)),
