@@ -2895,6 +2895,10 @@ async function deleteBranch(branchName) {
     if (!data.ok) throw new Error(data.error);
     
     alert(lang === 'es' ? '✅ Rama eliminada exitosamente' : '✅ Branch deleted successfully');
+    
+    // Recargar el sidebar de auto-aprobación para quitar la rama eliminada
+    await loadAutoApproveConfig();
+    
     loadManagedBranches();
   } catch(e) {
     alert(`❌ Error: ${e.message}`);
