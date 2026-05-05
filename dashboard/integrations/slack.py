@@ -101,12 +101,26 @@ def slack_api(method, payload):
 
 
 def find_pr_thread(pr_id, save_if_found=False):
+    """Busca el thread de Slack para un PR."""
+    # Verificar si Slack está habilitado
+    if not is_slack_enabled():
+        return None
+    
+    channel = get_slack_channel()
+    if not channel:
+        return None
+    
     from integrations.state import load_state, save_state
     state = load_state()
     pr_threads = state.setdefault("pr_threads", {})
     if str(pr_id) in pr_threads:
         return pr_threads[str(pr_id)]
-    result = slack_api("conversations.history", {"channel": SLACK_PR_CHANNEL, "limit": 200})
+    result = slack_api("conversations.history", {"channel": channel, "limit": 200})
+    
+    # Si Slack está deshabilitado, slack_api retorna con skipped=True
+    if result.get("skipped"):
+        return None
+    
     needle = f"pullrequest/{pr_id}"
     for msg in result.get("messages", []):
         text_blob = json.dumps(msg)
