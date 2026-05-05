@@ -1533,7 +1533,7 @@ let blockedAuthors = [];
 
 function switchTab(tab) {
   currentTab = tab;
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['activos','hoy','ayer','rango','historial','rules','branches'][i] === tab));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['activos','hoy','ayer','rango','historial','rules','branches','admin'][i] === tab));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + tab).classList.add('active');
   document.getElementById('range-inputs').style.display = tab === 'rango' ? 'flex' : 'none';
