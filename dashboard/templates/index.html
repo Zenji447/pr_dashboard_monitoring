@@ -1728,7 +1728,7 @@ async function loadAutoApproveConfig() {
 
 function renderAutoApproveUI() {
   document.getElementById("auto-approve-toggle").checked = !!autoConfig.enabled;
-  document.getElementById("branch-checks").innerHTML = KNOWN_BRANCHES.map(b => `
+  document.getElementById("branch-checks").innerHTML = managedBranchesForAutoApprove.map(b => `
     <button class="btn-branch ${autoConfig.branches.includes(b) ? 'active' : ''}"
       onclick="toggleBranch('${esc(b)}')">${esc(b)}</button>`).join("");
 }
