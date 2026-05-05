@@ -14,10 +14,48 @@ def normalize_ref(ref):
 
 logger = logging.getLogger("pr_dashboard")
 
-ORG = os.getenv("AZURE_ORG", "OrgClaroColombia")
-ORG_URL = f"https://dev.azure.com/{ORG}"
-PROJECT = os.getenv("AZURE_PROJECT", "SalesForce")
-REPOSITORY = os.getenv("AZURE_REPOSITORY", "SalesForce")
+# ── Configuración dinámica por tenant ─────────────────────────────────────────
+
+def _get_azure_config():
+    """Obtiene la configuración de Azure DevOps del tenant actual."""
+    from integrations.tenant_context import get_current_tenant
+    
+    tenant = get_current_tenant()
+    if tenant and tenant.azure_config:
+        return tenant.azure_config
+    
+    # Fallback a variables de entorno (para compatibilidad)
+    org = os.getenv("AZURE_ORG", "OrgClaroColombia")
+    return {
+        'org_url': f"https://dev.azure.com/{org}",
+        'project': os.getenv("AZURE_PROJECT", "SalesForce"),
+        'repository': os.getenv("AZURE_REPOSITORY", "SalesForce"),
+        'pat_token': None
+    }
+
+
+# Variables globales que ahora son dinámicas
+@property
+def ORG_URL():
+    return _get_azure_config()['org_url']
+
+@property  
+def PROJECT():
+    return _get_azure_config()['project']
+
+@property
+def REPOSITORY():
+    return _get_azure_config()['repository']
+
+# Para compatibilidad con código existente, creamos funciones
+def get_org_url():
+    return _get_azure_config()['org_url']
+
+def get_project():
+    return _get_azure_config()['project']
+
+def get_repository():
+    return _get_azure_config()['repository']
 
 # ── Token cache ───────────────────────────────────────────────────────────────
 _token_cache = {"value": None, "expires_at": 0.0}
