@@ -64,6 +64,35 @@ DEBUG = os.getenv("FLASK_DEBUG", os.getenv("DEBUG", "0")).lower() in {"1", "true
 app = Flask(__name__)
 
 
+# ── Tenant Middleware ─────────────────────────────────────────────────────────
+
+@app.before_request
+def identify_tenant():
+    """
+    Identifica el tenant antes de cada petición HTTP.
+    El tenant se identifica por la API Key en los headers.
+    """
+    # Obtener API Key de la petición
+    api_key = _request_api_key()
+    
+    if api_key:
+        # Buscar tenant por API Key
+        tenant = get_tenant_by_api_key(api_key)
+        if tenant:
+            # Establecer tenant en el contexto
+            set_current_tenant(tenant)
+            logger.debug(f"Tenant identificado: {tenant.company_name} (ID: {tenant.id})")
+        else:
+            logger.warning(f"API Key no válida: {api_key[:10]}...")
+    else:
+        # Sin API Key, usar tenant por defecto (ID 1) para compatibilidad
+        from integrations.tenant_context import get_tenant_by_id
+        default_tenant = get_tenant_by_id(1)
+        if default_tenant:
+            set_current_tenant(default_tenant)
+            logger.debug("Usando tenant por defecto (ID: 1)")
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def _request_api_key():
