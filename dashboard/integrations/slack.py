@@ -74,12 +74,23 @@ TA_SLACK_IDS = {
 
 
 def slack_api(method, payload):
+    """Llama a la API de Slack usando la configuración del tenant actual."""
+    # Verificar si Slack está habilitado
+    if not is_slack_enabled():
+        logger.debug("Slack no está habilitado para este tenant, omitiendo llamada a API")
+        return {"ok": True, "skipped": True}
+    
+    token = get_slack_token()
+    if not token:
+        logger.warning("No hay token de Slack configurado")
+        return {"ok": False, "error": "no_token"}
+    
     def _call():
         data = json.dumps(payload).encode()
         req = Request(
             f"https://slack.com/api/{method}",
             data=data,
-            headers={"Authorization": f"Bearer {SLACK_TOKEN}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         )
         with urlopen(req, timeout=5) as r:
             resp = json.loads(r.read())
