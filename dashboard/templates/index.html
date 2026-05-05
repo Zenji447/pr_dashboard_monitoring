@@ -1720,7 +1720,16 @@ let autoConfig = { enabled: false, branches: [] };
 
 async function loadAutoApproveConfig() {
   try {
+    // Cargar configuración de auto-aprobación
     autoConfig = await fetch("/api/config/auto-approve").then(r => r.json());
+    
+    // Cargar lista de ramas gestionadas
+    const branchesResponse = await fetch("/api/branches");
+    const branchesData = await branchesResponse.json();
+    if (branchesData.ok) {
+      managedBranchesForAutoApprove = branchesData.branches;
+    }
+    
     renderAutoApproveUI();
     updateAutoStatus();
   } catch(e) { document.getElementById("auto-status").textContent = "Error cargando config"; }
