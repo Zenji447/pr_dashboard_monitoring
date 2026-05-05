@@ -1715,7 +1715,7 @@ async function loadStats() {
 }
 
 // ── Auto-approve ─────────────────────────────────────────────────────────────
-const KNOWN_BRANCHES = ["develop", "develop-pr", "releaseproyecto/r6"];
+let managedBranchesForAutoApprove = [];
 let autoConfig = { enabled: false, branches: [] };
 
 async function loadAutoApproveConfig() {
