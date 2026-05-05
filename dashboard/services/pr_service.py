@@ -109,7 +109,7 @@ def _fetch_prs():
         changes = fetch_changes(pr_id, token)
         report = classify(pr, changes, token=token)
         report["creationDate"] = pr.get("creationDate", "")
-        report["url"] = f"{ORG_URL}/{PROJECT}/_git/{REPOSITORY}/pullrequest/{pr_id}"
+        report["url"] = f"{get_org_url()}/{get_project()}/_git/{get_repository()}/pullrequest/{pr_id}"
         report["myVote"] = get_my_vote(pr)
         report["blocked"] = (report.get("createdBy") or "").lower().strip() in blocked_authors
         report["frozen"] = any(bb == target_branch for bb in blocked_branches if bb)
