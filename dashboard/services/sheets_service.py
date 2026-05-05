@@ -10,7 +10,54 @@ from utils import minutes_between, retry
 
 logger = logging.getLogger("pr_dashboard")
 
-SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "1jsYHmGm-2eN5986bgN5jlPO86guNfWmnf980H4TsdO0")
+# ── Configuración dinámica por tenant ─────────────────────────────────────────
+
+def _get_sheets_config():
+    """Obtiene la configuración de Google Sheets del tenant actual."""
+    from integrations.tenant_context import get_current_tenant
+    
+    tenant = get_current_tenant()
+    if tenant:
+        try:
+            integration = tenant.get_integration('sheets')
+            if integration and integration['enabled']:
+                return integration['config']
+        except Exception as e:
+            logger.warning(f"Error obteniendo config de Sheets del tenant: {e}")
+    
+    # Fallback a variables de entorno (para compatibilidad)
+    return {
+        'spreadsheet_id': os.getenv("GOOGLE_SHEET_ID", "1jsYHmGm-2eN5986bgN5jlPO86guNfWmnf980H4TsdO0"),
+        'sheet_name': 'Hoja 1'
+    }
+
+
+def get_sheet_id():
+    """Obtiene el ID de la hoja de cálculo del tenant actual."""
+    config = _get_sheets_config()
+    return config.get('spreadsheet_id') if config else None
+
+
+def get_sheet_name():
+    """Obtiene el nombre de la hoja del tenant actual."""
+    config = _get_sheets_config()
+    return config.get('sheet_name', 'Hoja 1') if config else 'Hoja 1'
+
+
+def is_sheets_enabled():
+    """Verifica si Google Sheets está habilitado para el tenant actual."""
+    from integrations.tenant_context import get_current_tenant
+    
+    tenant = get_current_tenant()
+    if tenant:
+        return tenant.has_integration('sheets')
+    
+    # Fallback: si hay sheet_id, está habilitado
+    return get_sheet_id() is not None
+
+
+# Para compatibilidad con código existente
+SHEET_ID = get_sheet_id()
 CREDS_PATH = Path(os.getenv("GOOGLE_CREDS_PATH", "../memoria/service-account-key.json"))
 if not CREDS_PATH.is_absolute():
     CREDS_PATH = Path(__file__).parent.parent.parent / CREDS_PATH
