@@ -116,7 +116,7 @@ def list_active_prs():
 def list_completed_prs(top=100):
     return json.loads(subprocess.check_output([
         "az", "repos", "pr", "list", "--status", "completed",
-        "--repository", REPOSITORY, "--org", ORG_URL, "--project", PROJECT,
+        "--repository", get_repository(), "--org", get_org_url(), "--project", get_project(),
         "--top", str(top), "-o", "json",
     ], text=True))
 
