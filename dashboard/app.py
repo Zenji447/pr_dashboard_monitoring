@@ -127,7 +127,7 @@ def prs_completed_by_date(date_from, date_to):
             "closedDate": p.get("closedDate", ""),
             "creationDate": p.get("creationDate", ""),
             "mergeCommit": p.get("lastMergeCommit", {}).get("commitId", ""),
-            "url": f"{ORG_URL}/{PROJECT}/_git/{REPOSITORY}/pullrequest/{p['pullRequestId']}",
+            "url": f"{get_org_url()}/{get_project()}/_git/{get_repository()}/pullrequest/{p['pullRequestId']}",
             "hasConflicts": p.get("mergeStatus") == "conflicts",
             "policyStatus": "",
             "reviewers": p.get("reviewers", []),
