@@ -1122,7 +1122,7 @@ def list_tenants():
 
 
 @app.route("/api/tenants", methods=["POST"])
-@require_api_key
+@require_tenant_api_key
 def create_tenant():
     """Crea un nuevo tenant."""
     try:
