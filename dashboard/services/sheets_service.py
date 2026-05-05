@@ -228,6 +228,18 @@ def update_deploy(pr_id, deploy_status, deploy_date=""):
 
 def export_range(prs, auto_approved_ids, blocked_authors, token, get_policy_fn, get_approval_fn, get_deploy_fn):
     """Exporta una lista de PRs al Sheet, omitiendo duplicados."""
+    # Verificar si Sheets está habilitado
+    if not is_sheets_enabled():
+        logger.debug("Google Sheets no habilitado, omitiendo export_range")
+        return 0
+    
+    sheet_id = get_sheet_id()
+    sheet_name = get_sheet_name()
+    
+    if not sheet_id:
+        logger.warning("No hay sheet_id configurado")
+        return 0
+    
     rows = []
     for pr in prs:
         pr_id = pr["id"]
@@ -244,13 +256,13 @@ def export_range(prs, auto_approved_ids, blocked_authors, token, get_policy_fn, 
     def _do():
         svc = _sheets_service()
         sheet = svc.spreadsheets()
-        existing = sheet.values().get(spreadsheetId=SHEET_ID, range="Hoja 1").execute().get("values", [])
+        existing = sheet.values().get(spreadsheetId=sheet_id, range=sheet_name).execute().get("values", [])
         existing_ids = {r[0] for r in existing[1:] if r} if len(existing) > 1 else set()
         new_rows = [r for r in rows if str(r[0]) not in existing_ids]
         if not new_rows:
             return 0
         sheet.values().append(
-            spreadsheetId=SHEET_ID, range="Hoja 1",
+            spreadsheetId=sheet_id, range=sheet_name,
             valueInputOption="RAW", insertDataOption="INSERT_ROWS",
             body={"values": new_rows},
         ).execute()
