@@ -47,11 +47,6 @@ def get_project():
 def get_repository():
     return _get_azure_config()['repository']
 
-# Para compatibilidad con código existente que usa las constantes
-# Estas ahora son funciones que se llaman dinámicamente
-ORG_URL = get_org_url()
-PROJECT = get_project()
-REPOSITORY = get_repository()
 
 # ── Token cache ───────────────────────────────────────────────────────────────
 _token_cache = {"value": None, "expires_at": 0.0}
