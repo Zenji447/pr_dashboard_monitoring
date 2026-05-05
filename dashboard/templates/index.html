@@ -1382,6 +1382,63 @@
 <script>
   const API_KEY = localStorage.getItem("pr_dashboard_api_key") || "";
 
+  // Verificar si hay API Key configurada
+  if (!API_KEY) {
+    // Mostrar modal de configuración de API Key
+    document.addEventListener('DOMContentLoaded', function() {
+      showApiKeySetup();
+    });
+  }
+
+  function showApiKeySetup() {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+      background: rgba(0,0,0,0.8); display: flex; align-items: center; 
+      justify-content: center; z-index: 10000;
+    `;
+    
+    modal.innerHTML = `
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 500px; width: 90%;">
+        <h2 style="color: var(--accent); margin-bottom: 16px;">🔑 Configurar API Key</h2>
+        <p style="color: var(--muted); margin-bottom: 16px; line-height: 1.5;">
+          Para acceder al dashboard, necesitas configurar tu API Key de tenant.
+        </p>
+        <p style="color: var(--muted); margin-bottom: 16px; font-size: 0.9rem;">
+          <strong>API Key del tenant existente:</strong><br>
+          <code style="background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px; font-family: monospace;">
+            prm_AoHXVfu7N1fO44X5snd57vHGpXiudWJKNTecJhJgBmo
+          </code>
+        </p>
+        <input type="text" id="api-key-input" placeholder="Pega tu API Key aquí..." 
+               style="width: 100%; padding: 12px; background: var(--surface2); border: 1px solid var(--border); 
+                      border-radius: 8px; color: var(--text); margin-bottom: 16px; font-family: monospace;">
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button onclick="setApiKey()" style="background: var(--accent); color: white; border: none; 
+                  padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+            Configurar
+          </button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Auto-llenar con la API Key conocida
+    document.getElementById('api-key-input').value = 'prm_AoHXVfu7N1fO44X5snd57vHGpXiudWJKNTecJhJgBmo';
+  }
+
+  function setApiKey() {
+    const apiKey = document.getElementById('api-key-input').value.trim();
+    if (!apiKey) {
+      alert('Por favor ingresa una API Key válida');
+      return;
+    }
+    
+    localStorage.setItem('pr_dashboard_api_key', apiKey);
+    location.reload(); // Recargar la página para aplicar la API Key
+  }
+
   function apiHeaders(extra = {}) {
     const headers = { ...extra };
     if (API_KEY) headers["X-API-Key"] = API_KEY;
