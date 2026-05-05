@@ -179,6 +179,18 @@ def append_pr(pr_data, auto_approved=False, approval_date=""):
 
 
 def update_deploy(pr_id, deploy_status, deploy_date=""):
+    """Actualiza el estado de deploy de un PR en Google Sheets."""
+    # Verificar si Sheets está habilitado
+    if not is_sheets_enabled():
+        logger.debug("Google Sheets no habilitado, omitiendo update_deploy")
+        return
+    
+    sheet_id = get_sheet_id()
+    sheet_name = get_sheet_name()
+    
+    if not sheet_id:
+        return
+    
     def _run():
         try:
             def _do():
@@ -188,23 +200,23 @@ def update_deploy(pr_id, deploy_status, deploy_date=""):
                 if not row_num:
                     return
                 row_data = sheet.values().get(
-                    spreadsheetId=SHEET_ID, range=f"Hoja 1!A{row_num}:R{row_num}"
+                    spreadsheetId=sheet_id, range=f"{sheet_name}!A{row_num}:R{row_num}"
                 ).execute().get("values", [[]])[0]
                 created   = row_data[4] if len(row_data) > 4 else ""
                 approval  = row_data[5] if len(row_data) > 5 else ""
                 completed = row_data[6] if len(row_data) > 6 else ""
                 deploy_str = deploy_date[:16].replace("T", " ") if deploy_date else ""
                 updates = [
-                    (f"Hoja 1!H{row_num}", [[deploy_str]]),
-                    (f"Hoja 1!I{row_num}", [[minutes_between(created, approval)]]),
-                    (f"Hoja 1!J{row_num}", [[minutes_between(approval, completed)]]),
-                    (f"Hoja 1!K{row_num}", [[minutes_between(completed, deploy_str)]]),
-                    (f"Hoja 1!L{row_num}", [[minutes_between(created, deploy_str) if deploy_str else minutes_between(created, completed)]]),
-                    (f"Hoja 1!O{row_num}", [[deploy_status]]),
+                    (f"{sheet_name}!H{row_num}", [[deploy_str]]),
+                    (f"{sheet_name}!I{row_num}", [[minutes_between(created, approval)]]),
+                    (f"{sheet_name}!J{row_num}", [[minutes_between(approval, completed)]]),
+                    (f"{sheet_name}!K{row_num}", [[minutes_between(completed, deploy_str)]]),
+                    (f"{sheet_name}!L{row_num}", [[minutes_between(created, deploy_str) if deploy_str else minutes_between(created, completed)]]),
+                    (f"{sheet_name}!O{row_num}", [[deploy_status]]),
                 ]
                 for rng, vals in updates:
                     sheet.values().update(
-                        spreadsheetId=SHEET_ID, range=rng,
+                        spreadsheetId=sheet_id, range=rng,
                         valueInputOption="RAW", body={"values": vals},
                     ).execute()
                 logger.info("[sheets] Deploy PR %s actualizado: %s", pr_id, deploy_status)
