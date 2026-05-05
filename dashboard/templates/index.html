@@ -890,6 +890,30 @@
       </div>
     </div>
 
+    <div class="panel" id="panel-branches">
+      <div class="toolbar" style="margin-bottom:16px">
+        <button class="btn-primary" onclick="loadManagedBranches()" data-i18n="btnRefresh">↻ Recargar</button>
+        <button class="btn-sheets" onclick="openAddBranchModal()" data-i18n="addBranch">➕ Agregar Rama</button>
+      </div>
+      <div id="branches-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Rama</th>
+              <th>Reglas</th>
+              <th>Auto-Aprobación</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="branches-table-body">
+            <tr><td colspan="5" style="color:#64748b;text-align:center;padding:40px" data-i18n="loading">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
   </main>
 </div>
 
