@@ -9,8 +9,55 @@ from utils import retry
 
 logger = logging.getLogger("pr_dashboard")
 
-SLACK_TOKEN = os.getenv("SLACK_TOKEN")
-SLACK_PR_CHANNEL = os.getenv("SLACK_PR_CHANNEL", "C080K9D6EG2")
+# ── Configuración dinámica por tenant ─────────────────────────────────────────
+
+def _get_slack_config():
+    """Obtiene la configuración de Slack del tenant actual."""
+    from integrations.tenant_context import get_current_tenant
+    
+    tenant = get_current_tenant()
+    if tenant:
+        try:
+            integration = tenant.get_integration('slack')
+            if integration and integration['enabled']:
+                return integration['config']
+        except Exception as e:
+            logger.warning(f"Error obteniendo config de Slack del tenant: {e}")
+    
+    # Fallback a variables de entorno (para compatibilidad)
+    return {
+        'bot_token': os.getenv("SLACK_TOKEN"),
+        'channel': os.getenv("SLACK_PR_CHANNEL", "C080K9D6EG2")
+    }
+
+
+def get_slack_token():
+    """Obtiene el token de Slack del tenant actual."""
+    config = _get_slack_config()
+    return config.get('bot_token') if config else None
+
+
+def get_slack_channel():
+    """Obtiene el canal de Slack del tenant actual."""
+    config = _get_slack_config()
+    return config.get('channel') if config else None
+
+
+def is_slack_enabled():
+    """Verifica si Slack está habilitado para el tenant actual."""
+    from integrations.tenant_context import get_current_tenant
+    
+    tenant = get_current_tenant()
+    if tenant:
+        return tenant.has_integration('slack')
+    
+    # Fallback: si hay token, está habilitado
+    return get_slack_token() is not None
+
+
+# Para compatibilidad con código existente
+SLACK_TOKEN = get_slack_token()
+SLACK_PR_CHANNEL = get_slack_channel()
 
 # Guard en memoria para evitar notificaciones duplicadas en la misma sesión
 _notified_lock = threading.Lock()
