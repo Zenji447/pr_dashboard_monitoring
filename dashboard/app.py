@@ -115,6 +115,23 @@ def require_api_key(f):
     return decorated
 
 
+def require_tenant_api_key(f):
+    """Decorator que requiere una API Key válida de tenant."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        api_key = _request_api_key()
+        if not api_key:
+            return jsonify({"ok": False, "error": "API Key requerida"}), 401
+        
+        tenant = get_tenant_by_api_key(api_key)
+        if not tenant:
+            return jsonify({"ok": False, "error": "API Key inválida"}), 401
+        
+        set_current_tenant(tenant)
+        return f(*args, **kwargs)
+    return decorated
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def prs_completed_by_date(date_from, date_to):
