@@ -1128,6 +1128,93 @@
   </div>
 </div>
 
+<!-- Add/Edit Branch Modal -->
+<div class="modal-overlay" id="add-branch-modal" onclick="if(event.target===this)closeAddBranchModal()">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-title">
+      <span>🌿</span>
+      <span id="add-branch-modal-title" data-i18n="addBranch">Agregar Nueva Rama</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div>
+        <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+          <span data-i18n="branchName">Nombre de la Rama</span> <span style="color:#f87171">*</span>
+        </label>
+        <input type="text" id="add-branch-name" placeholder="ej: hotfix/production" 
+               style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+        <small style="color:var(--muted);font-size:0.75rem;margin-top:4px;display:block">
+          Ejemplos: develop, hotfix/production, releaseproyecto/r7
+        </small>
+      </div>
+      
+      <div style="border-top:1px solid var(--border2);padding-top:16px">
+        <h4 style="color:var(--text);margin-bottom:12px;font-size:0.9rem">⚙️ Configuración de Reglas (Opcional)</h4>
+        
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <input type="checkbox" id="add-branch-enabled" checked style="width:18px;height:18px">
+          <label for="add-branch-enabled" style="color:var(--text);cursor:pointer">
+            <span data-i18n="enableValidations">Habilitar validaciones</span>
+          </label>
+        </div>
+
+        <div>
+          <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+            <span data-i18n="releasePattern">Patrón de Release (Regex)</span>
+          </label>
+          <input type="text" id="add-branch-release-pattern" placeholder="ej: r?7[.\\-]\\d+" 
+                 style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:monospace;font-size:0.85rem">
+        </div>
+
+        <div style="margin-top:12px">
+          <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+            <span data-i18n="releaseMessage">Mensaje si falla Release</span>
+          </label>
+          <input type="text" id="add-branch-release-message" placeholder="ej: PR sin release válido" 
+                 style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+        </div>
+
+        <div style="margin-top:12px">
+          <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+            <span data-i18n="sprints">Sprints Activos (separados por coma)</span>
+          </label>
+          <input type="text" id="add-branch-sprints" placeholder="ej: sp71, sp72" 
+                 style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+        </div>
+
+        <div style="margin-top:12px">
+          <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+            <span data-i18n="sprintMessage">Mensaje si falla Sprint</span>
+          </label>
+          <input type="text" id="add-branch-sprint-message" placeholder="ej: PR sin sprint activo" 
+                 style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+        </div>
+
+        <div style="margin-top:12px">
+          <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:0.85rem">
+            <span data-i18n="warningMessage">Mensaje de Advertencia</span>
+          </label>
+          <input type="text" id="add-branch-warning-message" placeholder="ej: ⚠️ Revisar con cuidado" 
+                 style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text)">
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border2);padding-top:16px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="add-branch-auto-approve" style="width:18px;height:18px">
+          <label for="add-branch-auto-approve" style="color:var(--text);cursor:pointer">
+            <span data-i18n="addToAutoApprove">Agregar a auto-aprobación</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-status" id="modal-add-branch-status"></div>
+    <div class="modal-actions">
+      <button onclick="closeAddBranchModal()" style="background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border2)" data-i18n="cancel">Cancelar</button>
+      <button onclick="saveNewBranch()" class="btn-sheets" data-i18n="saveBranch">Guardar Rama</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const API_KEY = localStorage.getItem("pr_dashboard_api_key") || "";
 
