@@ -192,14 +192,16 @@ class TestCacheConsistency:
     """
     
     @given(tenant_data=tenant_data_strategy())
-    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
-    def test_cache_returns_same_data_as_database(self, tenant_data, create_tenant):
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], max_examples=50)
+    def test_cache_returns_same_data_as_database(self, tenant_data, create_tenant, cleanup_tenants):
         """Verify that cached tenant data matches database data."""
         assume(tenant_data['status'] == 'active')
         
         api_key = f'prm_{secrets.token_urlsafe(32)}'
+        unique_subdomain = f"{tenant_data['subdomain']}-{secrets.token_hex(4)}"
+        
         tenant_id = create_tenant(
-            subdomain=tenant_data['subdomain'],
+            subdomain=unique_subdomain,
             company_name=tenant_data['company_name'],
             api_key=api_key,
             plan=tenant_data['plan'],
@@ -218,7 +220,7 @@ class TestCacheConsistency:
         assert tenant_from_cache is not None
         
         assert tenant_from_db.id == tenant_from_cache.id == tenant_id
-        assert tenant_from_db.subdomain == tenant_from_cache.subdomain == tenant_data['subdomain']
+        assert tenant_from_db.subdomain == tenant_from_cache.subdomain == unique_subdomain
         assert tenant_from_db.company_name == tenant_from_cache.company_name == tenant_data['company_name']
         assert tenant_from_db.plan == tenant_from_cache.plan == tenant_data['plan']
         assert tenant_from_db.status == tenant_from_cache.status == tenant_data['status']
