@@ -223,6 +223,59 @@ POST /api/pr/<id>/reject         # Rechazar PR
 POST /api/pr/<id>/complete       # Completar PR
 ```
 
+##### Detalle: POST /api/pr/<id>/approve ⭐
+
+Este endpoint implementa una optimización inteligente para notificaciones a TA:
+
+**Flujo de ejecución:**
+
+1. **Aprobar el PR en Azure DevOps**
+   ```python
+   result = set_pr_vote(pr_id, "approve")
+   ```
+
+2. **Notificar aprobación en Slack** (una sola vez)
+   ```python
+   if pr_id not in approved_notified:
+       notify_pr_slack(pr_id, "approve")
+       approved_notified.append(pr_id)
+   ```
+
+3. **Notificar a TA (si aplica)** - En thread separado
+   ```python
+   def _notify_ta():
+       # Esperar a que exista el thread del PR en Slack
+       thread_ts = wait_for_pr_thread(pr_id, interval=5)
+       
+       # Verificar TAs pendientes
+       mentions = get_pr_ta_reviewers(pr_id, token, only_pending=True)
+       
+       # Solo notificar si hay TAs pendientes
+       if not mentions:
+           logger.info("TA ya aprobó, no se notifica")
+           return
+       
+       # Enviar notificación
+       text = f"{' '.join(mentions)} TA por favor revisa este PR"
+       slack_api("chat.postMessage", {...})
+   ```
+
+**Parámetros de `get_pr_ta_reviewers()`:**
+- `pr_id`: ID del Pull Request
+- `token`: Token de Azure DevOps
+- `only_pending=True`: Solo retorna TAs con estado "pending" (no aprobados)
+
+**Retorno:**
+- Lista de menciones de Slack (ej: `["<@U123456>", "<@U789012>"]`)
+- Lista vacía si todos los TAs ya aprobaron
+
+**Ventajas de esta implementación:**
+- ✅ Evita notificaciones duplicadas
+- ✅ Reduce spam en Slack
+- ✅ Notificación en thread separado (no bloquea la respuesta)
+- ✅ Manejo de errores robusto
+- ✅ Logging detallado para debugging
+
 #### Configuración
 ```python
 GET  /api/config/auto-approve         # Config auto-aprobación
