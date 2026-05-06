@@ -57,7 +57,7 @@ def clean_pr_guard(pr_id):
     approve_key = f"{pr_id}:approve"
     
     if approve_key in slack_notifications:
-        del slack_notifications[pr_id}:approve"]
+        del slack_notifications[approve_key]
         print(f"✅ Eliminado {approve_key} de slack_notifications")
     
     # Limpiar de approved_notified
