@@ -59,6 +59,10 @@ def is_slack_enabled():
 SLACK_TOKEN = get_slack_token()
 SLACK_PR_CHANNEL = get_slack_channel()
 
+# Guard en memoria para evitar notificaciones duplicadas en la misma sesión
+_notified_lock = threading.Lock()
+_notified_memory = set()  # (pr_id, action)
+
 TA_SLACK_IDS = {
     "gustavo alonso muciño": "U06JUHG1G9Y",
     "hugo revuelta":         "U07TQ8JNMBR",
