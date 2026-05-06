@@ -26,7 +26,7 @@ def _get_slack_config():
     
     # Fallback a variables de entorno (para compatibilidad)
     return {
-        'bot_token': os.getenv("SLACK_TOKEN"),
+        'bot_token': os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_TOKEN"),
         'channel': os.getenv("SLACK_PR_CHANNEL", "C080K9D6EG2")
     }
 
