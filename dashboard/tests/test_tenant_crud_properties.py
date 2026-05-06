@@ -240,14 +240,18 @@ class TestStatusValidation:
     
     @given(status=st.sampled_from(['active', 'inactive']))
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], max_examples=20)
-    def test_valid_status_accepted(self, status, create_tenant, cleanup_tenants):
+    def test_valid_status_accepted(self, status, create_tenant, db_connection, cleanup_tenants):
         """Verify that valid status values are accepted."""
         tenant_id = create_tenant(status=status)
-        tenant = get_tenant_by_id(tenant_id)
         
-        assert tenant is not None
-        assert tenant.status == status
-        assert tenant.status in ['active', 'inactive']
+        # Verify in database (get_tenant_by_id only returns active tenants)
+        cursor = db_connection.cursor()
+        cursor.execute("SELECT status FROM tenants WHERE id = ?", (tenant_id,))
+        row = cursor.fetchone()
+        
+        assert row is not None
+        assert row[0] == status
+        assert row[0] in ['active', 'inactive']
     
     def test_invalid_status_rejected(self, db_connection):
         """Verify that invalid status values are rejected by the database."""
