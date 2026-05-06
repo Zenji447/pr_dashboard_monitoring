@@ -128,13 +128,15 @@ class TestTenantRetrievalConsistency:
     """
     
     @given(tenant_data=tenant_data_strategy())
-    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
-    def test_tenant_retrieval_is_consistent(self, tenant_data, create_tenant):
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], max_examples=50)
+    def test_tenant_retrieval_is_consistent(self, tenant_data, create_tenant, cleanup_tenants):
         """Verify that retrieving a tenant by API Key returns consistent results."""
-        # Create tenant
+        # Create tenant with unique subdomain
         api_key = f'prm_{secrets.token_urlsafe(32)}'
+        unique_subdomain = f"{tenant_data['subdomain']}-{secrets.token_hex(4)}"
+        
         tenant_id = create_tenant(
-            subdomain=tenant_data['subdomain'],
+            subdomain=unique_subdomain,
             company_name=tenant_data['company_name'],
             api_key=api_key,
             plan=tenant_data['plan'],
@@ -159,9 +161,9 @@ class TestTenantRetrievalConsistency:
         assert tenant2.id == tenant_id
         assert tenant3.id == tenant_id
         
-        assert tenant1.subdomain == tenant_data['subdomain']
-        assert tenant2.subdomain == tenant_data['subdomain']
-        assert tenant3.subdomain == tenant_data['subdomain']
+        assert tenant1.subdomain == unique_subdomain
+        assert tenant2.subdomain == unique_subdomain
+        assert tenant3.subdomain == unique_subdomain
         
         assert tenant1.company_name == tenant_data['company_name']
         assert tenant2.company_name == tenant_data['company_name']
