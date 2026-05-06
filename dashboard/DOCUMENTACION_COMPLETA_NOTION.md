@@ -1599,7 +1599,11 @@ dashboard/
 - Slack API
 - Google Sheets API
 
-**Última actualización:** Mayo 2026
+**Última actualización:** Mayo 6, 2026
+
+**Cambios recientes:**
+- Optimización de notificación a TA (evita notificaciones duplicadas)
+- Sistema verifica si TA está pendiente antes de notificar
 
 ---
 
