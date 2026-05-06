@@ -375,7 +375,77 @@ get_pr_approval_date(id)     # Fecha de aprobación
 complete_pr(id)              # Completar PR
 set_pr_vote(id, vote)        # Votar PR
 add_pr_comment(id, text)     # Agregar comentario
+get_pr_ta_reviewers(id, token, only_pending=False)  # Obtener TAs ⭐
 ```
+
+#### Función: get_pr_ta_reviewers() ⭐
+
+Obtiene la lista de Technical Architects (TAs) asignados como reviewers de un PR.
+
+**Firma:**
+```python
+def get_pr_ta_reviewers(pr_id, token, only_pending=False):
+    """
+    Obtiene TAs del PR con opción de filtrar solo pendientes.
+    
+    Args:
+        pr_id: ID del Pull Request
+        token: Token de Azure DevOps
+        only_pending: Si True, solo retorna TAs que no han aprobado
+    
+    Returns:
+        Lista de menciones de Slack (ej: ["<@U123456>"])
+        Lista vacía si no hay TAs o todos aprobaron
+    """
+```
+
+**Comportamiento:**
+
+1. **Consulta reviewers del PR**
+   ```python
+   reviewers = az repos pr show --id {pr_id} --query "reviewers"
+   ```
+
+2. **Filtra TAs** (usuarios con rol de TA en el equipo)
+   ```python
+   ta_reviewers = [r for r in reviewers if is_ta(r['displayName'])]
+   ```
+
+3. **Si `only_pending=True`**, filtra por estado
+   ```python
+   # vote = 0: No vote (pendiente)
+   # vote = -5: Waiting for author
+   # vote = 10: Approved
+   pending_tas = [ta for ta in ta_reviewers if ta['vote'] != 10]
+   ```
+
+4. **Convierte a menciones de Slack**
+   ```python
+   mentions = [get_slack_mention(ta['displayName']) for ta in tas]
+   ```
+
+**Ejemplo de uso:**
+
+```python
+# Obtener todos los TAs
+all_tas = get_pr_ta_reviewers(12345, token)
+# Resultado: ["<@U123456>", "<@U789012>"]
+
+# Obtener solo TAs pendientes
+pending_tas = get_pr_ta_reviewers(12345, token, only_pending=True)
+# Resultado: ["<@U123456>"] (solo el que no ha aprobado)
+
+# Si todos aprobaron
+pending_tas = get_pr_ta_reviewers(12345, token, only_pending=True)
+# Resultado: [] (lista vacía)
+```
+
+**Estados de vote en Azure DevOps:**
+- `0`: No vote (pendiente de revisión)
+- `-5`: Waiting for author (esperando cambios del autor)
+- `-10`: Rejected (rechazado)
+- `5`: Approved with suggestions
+- `10`: Approved (aprobado)
 
 ### Slack (`integrations/slack.py`)
 
