@@ -147,6 +147,44 @@ Próxima validación usa nueva regla
 Cambios visibles inmediatamente
 ```
 
+### 3. Aprobación de PR con Notificación a TA ⭐
+```
+Usuario aprueba PR desde Dashboard
+         ↓
+POST /api/pr/<id>/approve
+         ↓
+Sistema aprueba en Azure DevOps
+         ↓
+Notifica "Aprobado" en Slack (una vez)
+         ↓
+Thread separado: Verificar TAs
+         ↓
+Espera thread del PR en Slack (wait_for_pr_thread)
+         ↓
+Consulta reviewers del PR en Azure
+         ↓
+Filtra TAs con estado "pending" (only_pending=True)
+         ↓
+¿Hay TAs pendientes?
+    │
+    ├─ SÍ → Envía notificación: "TA por favor revisa este PR"
+    │        └─ Marca como notificado en state.db
+    │
+    └─ NO → No notifica (TA ya aprobó)
+             └─ Log: "TA ya aprobó, no se notifica"
+         ↓
+Invalida cache de PRs
+         ↓
+Retorna {"ok": true, "ta_notified": true}
+```
+
+**Ventajas del flujo:**
+- ✅ Notificación en thread separado (no bloquea respuesta)
+- ✅ Verificación inteligente de estado de TAs
+- ✅ Evita notificaciones duplicadas
+- ✅ Logging detallado para debugging
+- ✅ Manejo robusto de errores
+
 ---
 
 # 🧩 Módulos Principales {#módulos-principales}
