@@ -1251,6 +1251,20 @@ Sí, toggle off en el sidebar. Los PRs seguirán validándose pero no se aprobar
 
 Sí, se envía notificación a Slack y se marca en el dashboard como "auto-aprobado".
 
+## Notificaciones
+
+### ¿Por qué no recibí notificación de TA si aprobé el PR?
+
+Si aprobaste el PR DESPUÉS de que el TA ya lo aprobó, el sistema no envía notificación porque el TA ya cumplió su revisión. Solo se notifica al TA si está pendiente de aprobar.
+
+### ¿Cómo sabe el sistema si el TA ya aprobó?
+
+El sistema consulta la lista de reviewers del PR y verifica cuáles tienen estado "pending". Solo notifica a los TAs que aún no han dado su aprobación.
+
+### ¿Puedo forzar la notificación al TA aunque ya haya aprobado?
+
+Actualmente no. La optimización está diseñada para evitar notificaciones innecesarias y mejorar la experiencia del usuario.
+
 ## Integración
 
 ### ¿Cómo se integra con Azure DevOps?
