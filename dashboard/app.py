@@ -275,57 +275,34 @@ def api_history():
 @require_api_key
 def approve(pr_id):
     try:
-        # Verificar si ya fue aprobado antes de hacer nada
-        state = load_state()
-        approved_notified = state.setdefault("approved_notified", [])
-        ta_notified = state.setdefault("ta_notified", [])
-        
-        # Si ya fue notificado, no hacer nada más
-        if pr_id in approved_notified:
-            logger.info("[approve] PR %s ya fue aprobado anteriormente, omitiendo", pr_id)
-            return jsonify({"ok": True, "already_approved": True})
-        
-        # Aprobar el PR
         result = set_pr_vote(pr_id, "approve")
         if result.returncode != 0:
             logger.error("[approve] PR %s falló: %s", pr_id, result.stderr)
             return jsonify({"ok": False, "error": "Error al aprobar el PR"}), 500
         
-        # Marcar como aprobado INMEDIATAMENTE para evitar duplicados
-        approved_notified.append(pr_id)
-        save_state(state)
-        
-        # Notificar aprobación (solo una vez)
-        notify_pr_slack(pr_id, "approve")
-        logger.info("[approve] PR %s aprobado y notificado", pr_id)
+        state = load_state()
+        approved_notified = state.setdefault("approved_notified", [])
+        if pr_id not in approved_notified:
+            notify_pr_slack(pr_id, "approve")
+            approved_notified.append(pr_id)
+            save_state(state)
 
-        # Notificar a TA solo si no se ha notificado antes
         def _notify_ta():
             try:
                 state2 = load_state()
                 ta_notified = state2.setdefault("ta_notified", [])
-                
-                # Verificar nuevamente por si acaso
-                if pr_id in ta_notified:
-                    logger.info("[approve] TA ya fue notificado para PR %s, omitiendo", pr_id)
-                    return
-                
-                # Marcar como notificado ANTES de enviar
-                ta_notified.append(pr_id)
-                save_state(state2)
-                
-                thread_ts = wait_for_pr_thread(pr_id, interval=5, max_wait=30)
-                if not thread_ts:
-                    logger.warning("[approve] No se encontró thread para PR %s, no se notificó a TA", pr_id)
-                    return
-                
-                token = get_token()
-                mentions = get_pr_ta_reviewers(pr_id, token)
-                text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
-                slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "thread_ts": thread_ts, "text": text})
-                logger.info("[approve] TA notificado para PR %s", pr_id)
+                if pr_id not in ta_notified:
+                    thread_ts = wait_for_pr_thread(pr_id, interval=5)
+                    if not thread_ts:
+                        return
+                    token = get_token()
+                    mentions = get_pr_ta_reviewers(pr_id, token)
+                    text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
+                    slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "thread_ts": thread_ts, "text": text})
+                    ta_notified.append(pr_id)
+                    save_state(state2)
             except Exception as e:
-                logger.error("[approve] Error notificando TA para PR %s: %s", pr_id, e)
+                logger.error("[approve] TA PR %s: %s", pr_id, e)
 
         threading.Thread(target=_notify_ta, daemon=True).start()
         invalidate_prs_cache()
