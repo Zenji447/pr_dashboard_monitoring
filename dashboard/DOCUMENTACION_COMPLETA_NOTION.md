@@ -1163,6 +1163,40 @@ rm ../memoria/state.db
 # El sistema recreará la BD automáticamente
 ```
 
+### 7. Notificación a TA no se envía
+
+**Síntomas:**
+- Apruebas un PR
+- No se envía notificación al TA en Slack
+- Esperabas que el TA fuera notificado
+
+**Causas posibles:**
+- El TA ya aprobó el PR antes que tú
+- Sistema optimizado para no enviar notificaciones duplicadas
+
+**Verificación:**
+
+```bash
+# 1. Verificar reviewers del PR
+az repos pr show --id <PR_ID> --query "reviewers[].{name:displayName,vote:vote}" -o table
+
+# 2. Buscar TAs pendientes
+# Vote = 0 (No vote) o Vote = -5 (Waiting for author)
+# Vote = 10 (Approved) = TA ya aprobó
+
+# 3. Ver logs del endpoint /approve
+tail -f logs/dashboard.log | grep "notify_ta"
+```
+
+**Comportamiento esperado:**
+- Si TA ya aprobó (vote=10): NO se notifica ✅
+- Si TA está pendiente (vote=0): SÍ se notifica ✅
+
+**Solución:**
+- Esto es el comportamiento correcto
+- Evita spam al TA
+- Si necesitas notificar manualmente, usa Slack directamente
+
 ---
 
 # ❓ FAQ {#faq}
