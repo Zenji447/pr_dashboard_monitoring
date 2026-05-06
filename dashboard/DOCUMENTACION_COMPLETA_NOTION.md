@@ -16,6 +16,36 @@
 
 ---
 
+# 📝 Historial de Cambios
+
+## Mayo 2026
+
+### ✨ Optimización de Notificación a TA
+**Fecha:** Mayo 6, 2026
+
+**Problema resuelto:**
+- Cuando un usuario aprobaba un PR DESPUÉS de que el TA ya lo había aprobado, el sistema enviaba una notificación innecesaria al TA solicitando revisión.
+
+**Solución implementada:**
+- El sistema ahora verifica si hay TAs pendientes de aprobar antes de enviar la notificación
+- Usa `get_pr_ta_reviewers(pr_id, token, only_pending=True)` para obtener solo TAs con estado "pending"
+- Solo notifica si hay al menos un TA pendiente de revisión
+
+**Beneficios:**
+- ✅ Reduce notificaciones innecesarias en Slack
+- ✅ Evita spam al TA
+- ✅ Mejora la experiencia del usuario
+- ✅ Notificaciones más relevantes y contextuales
+
+**Archivos modificados:**
+- `app.py` (endpoint `/approve`, función `_notify_ta()`)
+
+**Comportamiento:**
+- **Antes:** Siempre notificaba al TA al aprobar un PR
+- **Ahora:** Solo notifica si el TA está pendiente de aprobar
+
+---
+
 # 🎯 Visión General del Sistema {#visión-general}
 
 ## ¿Qué es?
