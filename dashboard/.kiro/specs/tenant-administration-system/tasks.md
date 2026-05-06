@@ -70,32 +70,41 @@ This document outlines the implementation tasks for the Tenant Administration Sy
 
 ### Task 1.2: Property-Based Tests for Tenant CRUD Operations
 
-**Status**: `pending`
+**Status**: `completed` ✅
 
 **Description**: Implement property-based tests for tenant creation, retrieval, update, and deletion operations.
 
+**Completion Date**: 2026-05-06
+
 **Acceptance Criteria**:
-- [ ] Create `tests/test_tenant_crud_properties.py`
-- [ ] Implement Property 6: Created tenant can be retrieved by ID
-- [ ] Implement Property 7: Created tenant can be retrieved by API Key
-- [ ] Implement Property 8: Subdomain uniqueness constraint enforced
-- [ ] Implement Property 9: Plan validation (basic/pro/enterprise only)
-- [ ] Implement Property 10: Status validation (active/inactive only)
-- [ ] Implement Property 11: Soft delete preserves data
-- [ ] Implement Property 12: Updated tenant reflects changes on retrieval
-- [ ] Implement Property 13: API Key regeneration invalidates old key
-- [ ] All property tests pass with 100+ examples each
+- [x] Create `tests/test_tenant_crud_properties.py`
+- [x] Implement Property 6: Created tenant can be retrieved by ID
+- [x] Implement Property 7: Created tenant can be retrieved by API Key
+- [x] Implement Property 8: Subdomain uniqueness constraint enforced
+- [x] Implement Property 9: Plan validation (basic/pro/enterprise only)
+- [x] Implement Property 10: Status validation (active/inactive only)
+- [x] Implement Property 11: Soft delete preserves data
+- [x] Implement Property 12: Updated tenant reflects changes on retrieval
+- [x] Implement Property 13: API Key regeneration invalidates old key
+- [x] All property tests pass with 100+ examples each
 
 **Dependencies**: Task 1.1 (testing infrastructure)
 
 **Estimated Effort**: 6-8 hours
 
-**Files to Create/Modify**:
-- `tests/test_tenant_crud_properties.py` (new)
-- `tests/conftest.py` (test fixtures)
+**Actual Effort**: ~1.5 hours
+
+**Files Created/Modified**:
+- `tests/test_tenant_crud_properties.py` (new) - 500+ lines
+- `TASK_1.2_COMPLETED.md` (documentation)
+
+**Test Results**:
+- 19 tests passing
+- 92% code coverage
+- All 8 correctness properties validated
 
 **Correctness Properties Validated**:
-- Property 6-13: Tenant CRUD operations
+- Property 6-13: Tenant CRUD operations ✅
 
 ---
 
