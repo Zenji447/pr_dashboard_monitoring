@@ -769,6 +769,37 @@ Abre: `http://localhost:5000`
    - Notifica en Slack
    - Solicita revisión TA (si aplica)
 
+#### Optimización de Notificación a TA ⭐
+
+El sistema ahora verifica inteligentemente si debe notificar al TA:
+
+**Escenario 1: Usuario aprueba ANTES que el TA**
+- ✅ Se envía notificación al TA: "TA por favor revisa este PR"
+- El TA aún no ha revisado, necesita ser notificado
+
+**Escenario 2: Usuario aprueba DESPUÉS que el TA**
+- ❌ NO se envía notificación al TA
+- El TA ya aprobó, no tiene sentido notificarlo nuevamente
+
+**Cómo funciona:**
+```python
+# El sistema verifica TAs pendientes antes de notificar
+pending_tas = get_pr_ta_reviewers(pr_id, token, only_pending=True)
+
+if pending_tas:
+    # Hay TAs que aún no han aprobado
+    notify_ta_slack(pr_id, pending_tas)
+else:
+    # Todos los TAs ya aprobaron, no notificar
+    pass
+```
+
+**Beneficios:**
+- Reduce notificaciones innecesarias
+- Evita spam al TA
+- Mejora la experiencia del usuario
+- Notificaciones más relevantes
+
 ### 4. Completar un PR
 
 1. PR debe estar aprobado
