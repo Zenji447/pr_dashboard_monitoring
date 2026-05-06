@@ -113,8 +113,8 @@ def db_connection(test_db_path: Path) -> Generator[sqlite3.Connection, None, Non
 
 
 @pytest.fixture(autouse=True)
-def clear_tenant_cache():
-    """Clear tenant cache before each test."""
+def clear_tenant_cache(cleanup_tenants):
+    """Clear tenant cache before and after each test."""
     from integrations.tenant_context import clear_tenant_cache
     clear_tenant_cache()
     yield
