@@ -1,6 +1,43 @@
-# PR Dashboard — Salesforce
+# PR Dashboard — Multi-Tenant SaaS
 
 Dashboard para monitoreo y auto-aprobación de Pull Requests en Azure DevOps con integración a Slack y Google Sheets.
+
+## 🎉 Actualización: Sistema Multi-Tenant
+
+**Fecha**: 6 de Mayo, 2026
+
+✅ **Sistema de testing completo implementado**
+- 88 tests automatizados pasando (100%)
+- 92% de cobertura de código
+- Property-based testing con Hypothesis
+- Thread-safety verificado
+- Soporte para múltiples clientes/tenants
+
+👉 **Documentación completa**: Ver `INDICE_DOCUMENTACION.md`  
+👉 **Inicio rápido**: Ver `LEEME_PRIMERO.md`
+
+---
+
+## 🚀 Características
+
+### Multi-Tenant
+- ✅ Soporte para múltiples clientes
+- ✅ Configuración aislada por tenant
+- ✅ API Key única por cliente
+- ✅ Panel de administración web
+
+### Dashboard de PRs
+- ✅ Visualización de Pull Requests
+- ✅ Auto-aprobación configurable
+- ✅ Reglas de validación personalizables
+- ✅ Gestión dinámica de ramas
+
+### Integraciones
+- ✅ Azure DevOps (PRs, repositorios)
+- ✅ Slack (notificaciones)
+- ✅ Google Sheets (exportación)
+
+---
 
 ## Setup
 
