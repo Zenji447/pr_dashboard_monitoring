@@ -295,9 +295,19 @@ def approve(pr_id):
                     thread_ts = wait_for_pr_thread(pr_id, interval=5)
                     if not thread_ts:
                         return
+                    
+                    # Verificar si TA ya aprobó antes de notificar
                     token = get_token()
-                    mentions = get_pr_ta_reviewers(pr_id, token)
-                    text = f"{' '.join(mentions)} TA por favor revisa este PR" if mentions else "TA por favor revisa este PR"
+                    mentions = get_pr_ta_reviewers(pr_id, token, only_pending=True)
+                    
+                    # Si no hay TAs pendientes, no notificar
+                    if not mentions:
+                        logger.info("[approve] TA ya aprobó PR %s, no se notifica", pr_id)
+                        ta_notified.append(pr_id)
+                        save_state(state2)
+                        return
+                    
+                    text = f"{' '.join(mentions)} TA por favor revisa este PR"
                     slack_api("chat.postMessage", {"channel": SLACK_PR_CHANNEL, "thread_ts": thread_ts, "text": text})
                     ta_notified.append(pr_id)
                     save_state(state2)
