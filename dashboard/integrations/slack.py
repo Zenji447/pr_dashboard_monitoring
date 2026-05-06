@@ -157,26 +157,13 @@ def notify_pr_slack(pr_id, action, detail=None):
         logger.warning(f"No hay canal de Slack configurado para PR {pr_id}")
         return
     
-    # Guard persistente: usar base de datos en lugar de memoria
-    from integrations.state import load_state, save_state
-    state = load_state()
-    slack_notifications = state.setdefault("slack_notifications", {})
-    
-    # Crear clave única para esta notificación
-    notification_key = f"{pr_id}:{action}"
-    
-    # Verificar si ya fue enviada
-    if notification_key in slack_notifications:
-        logger.info("[slack] Notificación duplicada ignorada PR %s acción %s (ya enviada anteriormente)", pr_id, action)
-        return
-    
-    # Marcar como enviada ANTES de enviar para evitar race conditions
-    slack_notifications[notification_key] = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "pr_id": pr_id,
-        "action": action
-    }
-    save_state(state)
+    # Guard: evitar duplicados para la misma acción en la misma sesión
+    key = (int(pr_id), action)
+    with _notified_lock:
+        if key in _notified_memory:
+            logger.info("[slack] Notificación duplicada ignorada PR %s acción %s", pr_id, action)
+            return
+        _notified_memory.add(key)
 
     labels = {
         "approve":  "✅ Aprobado",
@@ -201,22 +188,13 @@ def notify_pr_slack(pr_id, action, detail=None):
                 elapsed += interval
             if not thread_ts:
                 logger.warning("[slack] No se pudo notificar PR %s (acción: %s): hilo no encontrado", pr_id, action)
-                # Remover de la lista si no se pudo enviar
-                state2 = load_state()
-                slack_notifications2 = state2.get("slack_notifications", {})
-                if notification_key in slack_notifications2:
-                    del slack_notifications2[notification_key]
-                    save_state(state2)
                 return
             slack_api("chat.postMessage", {"channel": channel, "text": text, "thread_ts": thread_ts})
             logger.info("[slack] Notificación enviada PR %s acción %s", pr_id, action)
         except Exception as e:
             logger.error("[slack] Error notificando PR %s (acción: %s): %s", pr_id, action, e)
             # Si falla, remover del guard para permitir reintento
-            state2 = load_state()
-            slack_notifications2 = state2.get("slack_notifications", {})
-            if notification_key in slack_notifications2:
-                del slack_notifications2[notification_key]
-                save_state(state2)
+            with _notified_lock:
+                _notified_memory.discard(key)
 
     threading.Thread(target=_send, daemon=True).start()
