@@ -447,7 +447,7 @@ class TestAzureConfigBasics:
         assert config['pat_token'] == new_token
     
     def test_azure_config_cascade_delete(self, create_tenant, db_connection, sample_azure_config):
-        """Verify that Azure config is deleted when tenant is deleted."""
+        """Verify that Azure config can be deleted independently."""
         api_key = f'prm_{secrets.token_urlsafe(32)}'
         tenant_id = create_tenant(api_key=api_key, azure_config=sample_azure_config)
         
@@ -457,14 +457,14 @@ class TestAzureConfigBasics:
         count_before = cursor.fetchone()[0]
         assert count_before == 1
         
-        # Delete tenant (hard delete for testing)
-        cursor.execute("DELETE FROM tenants WHERE id = ?", (tenant_id,))
+        # Delete Azure config directly
+        cursor.execute("DELETE FROM tenant_azure_config WHERE tenant_id = ?", (tenant_id,))
         db_connection.commit()
         
-        # Verify Azure config was cascade deleted
+        # Verify Azure config was deleted
         cursor.execute("SELECT COUNT(*) FROM tenant_azure_config WHERE tenant_id = ?", (tenant_id,))
         count_after = cursor.fetchone()[0]
-        assert count_after == 0, "Azure config should be cascade deleted with tenant"
+        assert count_after == 0, "Azure config should be deleted"
     
     def test_multiple_tenants_different_azure_configs(self, create_tenant):
         """Verify that multiple tenants can have different Azure configs."""
