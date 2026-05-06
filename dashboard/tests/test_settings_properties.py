@@ -385,7 +385,10 @@ class TestSettingsBasics:
     def test_update_logo_url(self, create_tenant, db_connection):
         """Verify updating logo URL."""
         api_key = f'prm_{secrets.token_urlsafe(32)}'
-        tenant_id = create_tenant(api_key=api_key)
+        
+        # Create tenant with settings
+        settings_data = {'language': 'es', 'timezone': 'America/Mexico_City'}
+        tenant_id = create_tenant(api_key=api_key, settings=settings_data)
         
         # Update logo URL
         new_logo = 'https://example.com/logo.png'
@@ -406,7 +409,10 @@ class TestSettingsBasics:
     def test_update_primary_color(self, create_tenant, db_connection):
         """Verify updating primary color."""
         api_key = f'prm_{secrets.token_urlsafe(32)}'
-        tenant_id = create_tenant(api_key=api_key)
+        
+        # Create tenant with settings
+        settings_data = {'language': 'es', 'timezone': 'America/Mexico_City'}
+        tenant_id = create_tenant(api_key=api_key, settings=settings_data)
         
         # Update primary color
         new_color = '#FF5733'
@@ -427,7 +433,10 @@ class TestSettingsBasics:
     def test_update_local_repo_path(self, create_tenant, db_connection):
         """Verify updating local repository path."""
         api_key = f'prm_{secrets.token_urlsafe(32)}'
-        tenant_id = create_tenant(api_key=api_key)
+        
+        # Create tenant with settings
+        settings_data = {'language': 'es', 'timezone': 'America/Mexico_City'}
+        tenant_id = create_tenant(api_key=api_key, settings=settings_data)
         
         # Update local repo path
         new_path = '/path/to/local/repo'
