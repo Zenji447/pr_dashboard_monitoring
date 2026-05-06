@@ -49,16 +49,36 @@ def fetch_changes(pr_id, token):
 def get_my_vote(pr):
     """Obtiene mi voto en el PR."""
     try:
+        # Obtener el usuario actual de Azure
+        result = subprocess.run([
+            "az", "account", "show", "--query", "user.name", "-o", "tsv"
+        ], capture_output=True, text=True, check=False)
+        
+        if result.returncode != 0:
+            logger.warning("No se pudo obtener el usuario actual de Azure")
+            return "no_vote"
+        
+        current_user_email = result.stdout.strip().lower()
+        
         reviewers = pr.get("reviewers", [])
-        # Buscar mi voto (esto debería usar el usuario actual, pero por simplicidad usamos el primer reviewer)
+        
+        # Buscar específicamente MI voto
         for reviewer in reviewers:
-            vote = reviewer.get("vote", 0)
-            if vote == 10:
-                return "approved"
-            elif vote == -10:
-                return "rejected"
-            elif vote == -5:
-                return "waiting"
+            reviewer_email = reviewer.get("uniqueName", "").lower()
+            reviewer_display = reviewer.get("displayName", "").lower()
+            
+            # Comparar por email o display name
+            if current_user_email in reviewer_email or current_user_email in reviewer_display:
+                vote = reviewer.get("vote", 0)
+                if vote == 10:
+                    return "approved"
+                elif vote == -10:
+                    return "rejected"
+                elif vote == -5:
+                    return "waiting"
+                else:
+                    return "no_vote"
+        
         return "no_vote"
     except Exception as e:
         logger.warning(f"Error getting vote for PR: {e}")
