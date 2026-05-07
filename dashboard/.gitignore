@@ -2,6 +2,11 @@
 .env
 google_credentials.json
 
+# Base de datos local (contiene configuración sensible)
+../memoria/state.db
+memoria/state.db
+state.db
+
 # Archivos temporales con información sensible
 SLACK_*.md
 SLACK_*.txt
