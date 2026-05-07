@@ -2,6 +2,18 @@
 .env
 google_credentials.json
 
+# Archivos temporales con información sensible
+SLACK_*.md
+SLACK_*.txt
+*_SLACK.md
+DIAGNOSTICO_SLACK.md
+RESUMEN_SESION_SLACK.md
+RESUMEN_SLACK_FIX.md
+LISTO_PARA_PROBAR.txt
+PROBLEMAS_IDENTIFICADOS_RESUMEN.md
+*_RESUMEN.md
+LISTO_*.txt
+
 # Python
 __pycache__/
 *.pyc
